@@ -216,6 +216,9 @@ class ROIWriter:
     def _long(self, position, numbers):
         self._number(position, numbers, 'i', 4)
 
+    def _single(self, position, numbers):
+        self._number(position, numbers, 'f', 4)
+
     def _header1(self):
         self.bites[:4] = list(b'Iout')
         self._short(VERSION_OFFSET, self.frame.file_version)
@@ -231,23 +234,32 @@ class ROIWriter:
         self._long(HEADER2_OFFSET, self.header2_offset)
         self._long(STROKE_COLOR, self.frame.stroke_color)
 
+    def _points(self):
+        n = self.frame.points.shape[0]
+        xs = (self.frame.points[:, 0] - self.frame.left).tolist()
+        ys = (self.frame.points[:, 1] - self.frame.top).tolist()
+        self._short(COORDINATES, xs)
+        self._short(COORDINATES+2*n, ys)
+        if self.frame.subpixel:
+            xf, yf = self.frame.point_floats.T.tolist()
+            self._single(COORDINATES+4*n, xf)
+            self._single(COORDINATES+8*n, yf)
+
+    def _header2(self):
+        self._long(self.header2_offset+NAME_LENGTH, len(self.frame.name))
+        self._long(self.header2_offset+NAME_OFFSET, self.header2_offset+52+12)
+        self._short(self.header2_offset + 52 + 12, list(map(ord, self.frame.name)))
+
     def generate(self):
         self._header1()
+        self._points()
+        self._header2()
         return bytes(self.bites)
 
-
-def sanity_check(frame, bites):
-    generated = ROIWriter(frame).generate()
-    b, g = np.array(list(bites)), np.array(list(generated))
-
-    def check(start, end, name):
-        diffs = b[start:end] != g[start:end]
-        if not diffs.any():
-            print('passed', name)
-        else:
-            print(np.arange(start, end)[diffs].tolist())
-
-    check(0, 64, 'header1')
+    def sanity_check(self, bites):
+        generated = self.generate()
+        b, g = np.array(list(bites)), np.array(list(generated))
+        assert (b == g).all()
 
 
 class ROIFile:
@@ -255,8 +267,10 @@ class ROIFile:
         zipped = zipfile.ZipFile(filepath)
         files = dict()
         for fn in zipped.filelist:
-            files[fn.filename] = ROIReader(zipped.read(fn.filename)).parse()
-            sanity_check(files[fn.filename], zipped.read(fn.filename))
+            bites = zipped.read(fn.filename)
+            frame = ROIReader(bites).parse()
+            files[fn.filename] = frame
+            ROIWriter(frame).sanity_check(bites)
 
 
 def test():
