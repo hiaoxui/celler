@@ -8,3 +8,4 @@ matplotlib
 pandas
 imageio
 scyjava
+imantics

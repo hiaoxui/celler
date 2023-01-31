@@ -1,3 +1,4 @@
+from typing import *
 import imagej
 import os
 import numpy as np
@@ -14,6 +15,7 @@ from scipy.stats import median_abs_deviation
 from scipy.optimize import curve_fit
 from sklearn.neighbors import KernelDensity
 from matplotlib import pyplot as plt
+from imantics import Polygons, Mask
 
 from .utils import logger, Config
 
@@ -38,6 +40,7 @@ class IJPort:
             self.imp = imp = channels[0]
         imp.getProcessor().resetMinAndMax()
         self.pixels = ij.py.from_java(imp).to_numpy()
+        np.save(self._np_data_path, self.pixels)
         ij.ui().show(self.imp)
         self.roi_manager = ij.RoiManager.getRoiManager()
         ij.RoiManager()
@@ -46,15 +49,11 @@ class IJPort:
     def __init__(self, image_file_path: str, config: Config):
         self.config = config
         self.log_folder = image_file_path + '_logs'
+        self._np_data_path = os.path.join(self.log_folder, 'pixels.npy')
         self.image_file_path = image_file_path
         os.makedirs(self.log_folder, exist_ok=True)
-        self.roi_manager = self.pixels = self.dataset = self.imp = self.ij = None
-        np_data_path = os.path.join(self.log_folder, 'pixels.npy')
-        if os.path.exists(np_data_path):
-            self.pixels = np.load(np_data_path)
-        else:
-            self.init_ij()
-            np.save(np_data_path, self.pixels)
+        self.roi_manager = self.dataset = self.imp = self.ij = None
+        self.pixels: Optional[np.ndarray] = None
 
     def select_last_roi(self):
         self.roi_manager.deselect()
@@ -77,10 +76,14 @@ class IJPort:
             if r.area > self.config.max_size:
                 label_mask_clean[label_mask_clean == r.label] = 0
         region_properties = measure.regionprops(label_mask_clean)
-        return smooth, label_mask_clean, region_properties
+        return smooth, label_mask_clean, region_properties, Mask(label_mask_clean).polygons().points
 
     def plot(self):
-        smooth, label_mask_clean, region_properties = self.find_blobs(0)
+        if os.path.exists(self._np_data_path):
+            self.pixels = np.load(self._np_data_path)
+        else:
+            self.init_ij()
+        smooth, label_mask_clean, region_properties, polygons = self.find_blobs(0)
         fig, ax = plt.subplots(1, 1, figsize=(20, 20))
         ax.imshow(smooth)
         ax.contour(label_mask_clean, colors='red')

@@ -6,7 +6,7 @@ from celler.utils import logger, Config
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('action', metavar='ACTION', type=str, choices=['plot', 'track'])
+    parser.add_argument('action', metavar='ACTION', type=str, choices=['plot', 'segment'])
     parser.add_argument('-i', metavar='IMAGE', type=str, required=True, help='image path (tif)')
     # Parameters
     parser.add_argument('--gaussian-sigma', type=float, default=2.0)
