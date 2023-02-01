@@ -13,11 +13,15 @@ def get_logger():
 
 @dataclass()
 class Config:
+    # for blob finding
     gaussian_sigma: float
     threshold_adjustment: float
     min_size: int
     max_hole: int
     max_size: int
+    # for tracking
+    track_memory: int
+    search_range: float
 
 
 logger = get_logger()

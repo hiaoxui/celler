@@ -13,9 +13,11 @@ from scipy import stats
 import scipy
 from scipy.stats import median_abs_deviation
 from scipy.optimize import curve_fit
+import trackpy
 from sklearn.neighbors import KernelDensity
 from matplotlib import pyplot as plt
 from imantics import Polygons, Mask
+import pandas as pd
 
 from .utils import logger, Config
 
@@ -56,11 +58,14 @@ class IJPort:
         self.roi_manager = self.dataset = self.imp = self.ij = None
         self.pixels: Optional[np.ndarray] = None
         self.rois = list()
+        self.blobs = dict()
 
     def retrieve_rois(self):
         self.rois = [self.roi_manager.getRoi(i) for i in range(self.roi_manager.getCount())]
 
     def find_blobs(self, frame: int):
+        if frame in self.blobs:
+            return self.blobs[frame]
         img = self.pixels[frame]
         smooth = filters.gaussian(img, self.config.gaussian_sigma, preserve_range=True)
         smoothed_std = smooth.std()
@@ -75,11 +80,8 @@ class IJPort:
                 cell_mask_clean[label_mask == r.label] = 0
         label_mask_clean = measure.label(cell_mask_clean)
         region_properties = measure.regionprops(label_mask_clean)
+        self.blobs[frame] = (smooth, label_mask_clean, region_properties)
         return smooth, label_mask_clean, region_properties
-
-    @staticmethod
-    def mask2polygon(mask):
-        return Mask(mask).polygons().points
 
     def _plot(self, smooth, label_mask_clean, region_properties, output_name):
         fig, ax = plt.subplots(1, 1, figsize=(20, 20))
@@ -98,13 +100,33 @@ class IJPort:
         smooth, label_mask_clean, region_properties = self.find_blobs(0)
         self._plot(smooth, label_mask_clean, region_properties, 'cells')
 
+    def track(self, start_frame: int, cell_idx: int):
+        dfs = list()
+        for fi in range(start_frame, self.pixels.shape[0]):
+            smooth, label_mask_clean, region_properties = self.find_blobs(fi)
+            for ci, rp in enumerate(region_properties):
+                dfs.append({'y': rp.centroid[0], 'x': rp.centroid[1], 'bbox': rp.bbox, 'frame': fi, 'cell': ci})
+        df = pd.DataFrame(dfs)
+        tracked = trackpy.link_df(df, self.pixels.shape[1] * self.config.search_range, memory=self.config.track_memory)
+        particle_idx = tracked[(tracked.frame == start_frame) & (tracked.cell == cell_idx)].particle.array[0]
+        fetched = tracked[tracked.particle == particle_idx]
+        for _, cell_in_frame in fetched.iterrows():
+            cur_frame_idx, cur_cell_idx = cell_in_frame.frame, cell_in_frame.cell
+            if cur_frame_idx == start_frame:
+                continue
+            smooth, label_mask_clean, region_properties = self.find_blobs(cur_frame_idx)
+            cell_mask = region_properties[cur_cell_idx].label == label_mask_clean
+            self.add_roi(cur_frame_idx, cell_mask)
+
     def segment(self):
         self.init_ij()
         logger.warning("Select your cell.")
         input('Press Enter to proceed.')
         self.retrieve_rois()
-        self.find_closest(self.rois[-1], 0)
+        cell_idx = self.find_closest(self.rois[-1], 0)
         input('Please check the revision.')
+        self.track(0, cell_idx)
+        input('Enter to exit.')
 
     @staticmethod
     def read_roi(roi):
@@ -124,15 +146,20 @@ class IJPort:
         for rp in region_properties:
             distances.append(np.sqrt(np.sum((np.array([rp.centroid[1], rp.centroid[0]]) - input_center)**2)))
         cell_idx = np.argmin(distances)
+        cell_mask = label_mask_clean == region_properties[cell_idx].label
+        self.add_roi(frame, cell_mask)
+        self.delete_roi(0)
+        return int(cell_idx)
 
-        polygon = self.mask2polygon(label_mask_clean == region_properties[cell_idx].label)[0].astype(float)
+    def add_roi(self, frame_idx, cell_mask):
+        self.imp.setT(frame_idx+1)
         polygon_class = sj.jimport('ij.gui.PolygonRoi')
+        polygon = Mask(cell_mask).polygons().points[0].astype(float)
         roi = polygon_class(polygon[:, 0].tolist(), polygon[:, 1].tolist(), polygon.shape[0], 2)
         # overlay_class = sj.jimport('ij.gui.Overlay')
         # ov = overlay_class()
         # ov.add(roi)
         self.roi_manager.addRoi(roi)
-        self.delete_roi(0)
 
     def delete_roi(self, index: int):
         self.retrieve_rois()

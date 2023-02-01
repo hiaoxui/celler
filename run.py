@@ -14,10 +14,15 @@ def main():
     parser.add_argument('--min-size', type=int, default=20**2)
     parser.add_argument('--max-hole', type=float, default=40**2)
     parser.add_argument('--max-size', type=float, default=1000**2)
+    parser.add_argument('--track-memory', type=float, default=2)
+    parser.add_argument('--search-range', type=float, default=5e-2)
 
     args = parser.parse_args()
     logger.setLevel('INFO')
-    config = Config(args.gaussian_sigma, args.threshold_adjustment, args.min_size, args.max_hole, args.max_size)
+    config = Config(
+        args.gaussian_sigma, args.threshold_adjustment, args.min_size, args.max_hole, args.max_size,
+        args.track_memory, args.search_range
+    )
 
     port = IJPort(args.i, config)
     if args.action == 'plot':
