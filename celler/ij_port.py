@@ -134,9 +134,9 @@ class IJPort:
             self.add_roi(cur_frame_idx, cell_mask)
         self.roi_manager.runCommand('Sort')
 
-    def segment(self):
-        self.init_ij()
+    def segment_one_cell(self):
         logger.warning("Select your cell.")
+        time.sleep(1)
         while len(self.retrieve_rois()) == 0:
             time.sleep(1)
         logger.warning('Found the cell.')
@@ -161,6 +161,24 @@ class IJPort:
                 self.read_user_input()
                 self.track(cell_idx)
             else:
+                break
+
+    def segment(self):
+        self.init_ij()
+        while True:
+            self.delete_roi(list(range(len(self.retrieve_rois()))))
+            self.auto_rois = set()
+            self.trusted_cell_info = dict()
+            self.retrieve_rois()
+            self.cell_name = None
+            self.segment_one_cell()
+            logger.warning(f'Done with {self.cell_name}.')
+            time.sleep(0.5)
+
+            choice = ''
+            while choice.lower() not in ['c', 'e']:
+                choice = input('(C)ontinue or (E)xit.')
+            if choice.lower() == 'e':
                 break
 
     @staticmethod
@@ -197,10 +215,17 @@ class IJPort:
         self.roi_manager.addRoi(roi)
         self.auto_rois.add(roi.getName())
 
-    def delete_roi(self, index: int):
-        self.retrieve_rois()
-        self.roi_manager.select(index)
-        self.roi_manager.runCommand('Delete')
+    def delete_roi(self, index: Union[int, List[int]]):
+        if isinstance(index, int):
+            self.delete_roi([index])
+            return
+        if len(index) > 0:
+            self.roi_manager.deselect()
+            time.sleep(0.2)
+            self.roi_manager.setSelectedIndexes(index)
+            time.sleep(0.2)
+            self.roi_manager.runCommand('Delete')
+            time.sleep(0.2)
         self.retrieve_rois()
 
     def delete_roi_in_frame(self, frame: int):
@@ -226,12 +251,8 @@ class IJPort:
             self.trusted_cell_info[frame_idx] = {'x': center[0], 'y': center[1]}
 
     def delete_auto(self):
-        while True:
-            deleted = False
-            for idx, roi in enumerate(self.retrieve_rois()):
-                if roi.getName() in self.auto_rois:
-                    self.delete_roi(idx)
-                    deleted = True
-                    break
-            if not deleted:
-                break
+        to_delete = list()
+        for idx, roi in enumerate(self.retrieve_rois()):
+            if roi.getName() in self.auto_rois:
+                to_delete.append(idx)
+        self.delete_roi(to_delete)
