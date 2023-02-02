@@ -23,7 +23,7 @@ class IJPort:
             return
         logger.info('Initializing ImageJ')
         sj.config.add_option('-Xmx8g')
-        self.ij = ij = imagej.init('sc.fiji:fiji', mode='interactive')
+        self.ij = ij = imagej.init('2.9.0', mode='interactive')
         ij.ui().showUI()
         logger.info(f'ImageJ version {ij.getVersion()}')
 
