@@ -42,6 +42,7 @@ class IJPort:
         ij.ui().show(self.imp)
         self.roi_manager = ij.RoiManager.getRoiManager()
         ij.RoiManager()
+        sj.jimport('ij.plugin.filter.Analyzer').setMeasurements(12582911)
         logger.info(f'Done with loading.')
 
     def __init__(self, image_file_path: str, config: Config):
