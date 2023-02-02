@@ -155,6 +155,8 @@ class IJPort:
                 os.makedirs(os.path.join(self.log_folder, self.cell_name), exist_ok=True)
                 self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
                 self.roi_manager.save(os.path.join(self.cell_folder, 'RoiSet.zip'))
+                self.roi_manager.runCommand('Measure')
+                self.ij.IJ.saveAs('measurements', os.path.join(self.cell_folder, 'measurements.csv'))
                 break
             elif choice.lower() == 'r':
                 self.delete_auto()
