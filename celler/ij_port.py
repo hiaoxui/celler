@@ -158,6 +158,7 @@ class IJPort:
                 self.roi_manager.save(os.path.join(self.cell_folder, 'RoiSet.zip'))
                 self.roi_manager.runCommand('Measure')
                 self.ij.IJ.saveAs('measurements', os.path.join(self.cell_folder, 'measurements.csv'))
+                self.ij.py.run_macro('run("Clear Results");', {})
                 break
             elif choice.lower() == 'r':
                 self.delete_auto()
