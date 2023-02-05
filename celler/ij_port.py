@@ -8,13 +8,14 @@ import numpy as np
 import scyjava as sj
 from skimage import filters, morphology, measure
 from skimage.filters import threshold_otsu
+from imantics import Polygons, Mask
 import trackpy
 from matplotlib import pyplot as plt
-from imantics import Polygons, Mask
 import pandas as pd
 
-from .utils import logger, Config
-from .region import Region
+from .utils import logger, Config, user_cmd
+from .blob import Region, Blob, BlobFinder
+from .predict import SimpleTrackPYPredictor
 
 
 class IJPort:
@@ -47,48 +48,22 @@ class IJPort:
 
     def __init__(self, image_file_path: str, config: Config):
         self.config = config
+        self.find_blobs = BlobFinder(config)
+        # paths
         self.log_folder = image_file_path + '_logs'
         self._np_data_path = os.path.join(self.log_folder, 'cache', 'pixels.npy')
         self.image_file_path = image_file_path
         os.makedirs(os.path.join(self.log_folder, 'cache'), exist_ok=True)
+        self.predictor = SimpleTrackPYPredictor(config)
+        # shared objects
         self.roi_manager = self.dataset = self.imp = self.ij = None
         self.pixels: Optional[np.ndarray] = None
         self.cell_name = None
-        self.rois = list()
-        self.blobs = dict()
-        # All cells are final from this step on
-        self.auto_rois = set()
-        self.trusted_cell_info = dict()
+
+        # for current step
 
     def retrieve_rois(self):
-        self.rois = [self.roi_manager.getRoi(i) for i in range(self.roi_manager.getCount())]
-        return self.rois
-
-    def find_blobs(self, frame: int) -> Tuple[np.ndarray, np.ndarray, List[Region]]:
-        if frame in self.blobs:
-            return self.blobs[frame]
-        cache_path = os.path.join(self.log_folder, 'cache', f'blob_{frame:03}.pkl')
-        if os.path.exists(cache_path):
-            smooth, label_mask_clean, regions = pickle.load(open(cache_path, 'rb'))
-        else:
-            img = self.pixels[frame]
-            smooth = filters.gaussian(img, self.config.gaussian_sigma, preserve_range=True)
-            smoothed_std = smooth.std()
-            otsu_threshold = threshold_otsu(smooth) + self.config.threshold_adjustment * smoothed_std
-            cell_mask = smooth > otsu_threshold
-            cell_mask_clean = morphology.remove_small_objects(cell_mask, self.config.min_size)
-            cell_mask_clean = morphology.remove_small_holes(cell_mask_clean, self.config.max_hole)
-            label_mask = measure.label(cell_mask_clean)
-            region_properties = measure.regionprops(label_mask)
-            for r in region_properties:
-                if r.area > self.config.max_size:
-                    cell_mask_clean[label_mask == r.label] = 0
-            label_mask_clean = measure.label(cell_mask_clean)
-            region_properties = measure.regionprops(label_mask_clean)
-            regions = [Region(rp) for rp in region_properties]
-            pickle.dump((smooth, label_mask_clean, regions), open(cache_path, 'wb'))
-        self.blobs[frame] = (smooth, label_mask_clean, regions)
-        return smooth, label_mask_clean, regions
+        return [self.roi_manager.getRoi(i) for i in range(self.roi_manager.getCount())]
 
     def _plot(self, smooth, label_mask_clean, regions, output_name):
         fig, ax = plt.subplots(1, 1, figsize=(20, 20))
@@ -104,84 +79,103 @@ class IJPort:
             self.pixels = np.load(self._np_data_path)
         else:
             self.init_ij()
-        smooth, label_mask_clean, regions = self.find_blobs(0)
+        smooth, label_mask_clean, regions = self.find_blobs(self.pixels[0], None, None)
         self._plot(smooth, label_mask_clean, regions, 'cells')
 
-    def track(self, cell_idx_in_frame0: int, end_frame: Optional[int] = None):
-        rows = list()
-        end_frame = end_frame if end_frame is not None else self.pixels.shape[0]
-        for fi in range(0, end_frame):
-            if fi in self.trusted_cell_info:
-                tci = self.trusted_cell_info[fi]
-                rows.append({'x': tci['x'], 'y': tci['y'], 'frame': fi, 'cell': -1})
-            else:
-                smooth, label_mask_clean, regions = self.find_blobs(fi)
-                for ci, rp in enumerate(regions):
-                    rows.append({'x': rp.centroid[0], 'y': rp.centroid[1], 'frame': fi, 'cell': ci})
-        tracked = trackpy.link(pd.DataFrame(rows), self.pixels.shape[1] * self.config.search_range, memory=self.config.track_memory)
-        if 0 not in self.trusted_cell_info:
-            particle_idx = tracked[(tracked.frame == 0) & (tracked.cell == cell_idx_in_frame0)].particle.array[0]
-        else:
-            frame0 = tracked[tracked.frame == 0]
-            assert len(frame0) == 1
-            particle_idx = frame0.particle.array[0]
-        fetched = tracked[tracked.particle == particle_idx]
-        for cell_in_frame in fetched.itertuples():
-            cur_frame_idx, cur_cell_idx = cell_in_frame.frame, cell_in_frame.cell
-            if cur_frame_idx in self.trusted_cell_info:
+    @property
+    def total_frames(self) -> int:
+        return self.pixels.shape[0]
+
+    def check_user_input(
+            self, user_inputs: Dict[int, Tuple[str, Region]], auto_rois: Set[str]
+    ) -> List[Tuple[int, Region]]:
+        new_frames = list()
+        for roi in self.retrieve_rois():
+            if roi.getName() in auto_rois:
                 continue
-            smooth, label_mask_clean, regions = self.find_blobs(cur_frame_idx)
-            cell_mask = regions[cur_cell_idx].label == label_mask_clean
-            self.add_roi(cur_frame_idx, cell_mask)
-        self.roi_manager.runCommand('Sort')
+            frame = int(roi.getName()[:4]) - 1
+            if frame in user_inputs and roi.getName() == user_inputs[frame][0]:
+                # It has been recorded
+                continue
+            coo, center = self.read_roi(roi)
+            region = Region.from_roi(
+                coo, filters.gaussian(self.pixels[frame], self.config.gaussian_sigma, preserve_range=True)
+            )
+            user_inputs[frame] = (roi.getName(), region)
+            new_frames.append((frame, region))
+        return new_frames
 
     def segment_one_cell(self):
         logger.warning("Select your cell.")
-        time.sleep(1)
         while len(self.retrieve_rois()) == 0:
             time.sleep(1)
-        logger.warning('Found the cell.')
-        cell_idx = self.find_closest(self.rois[-1], 0)
-        self.cell_name = f'cell_{cell_idx:02}'
+        # logger.warning('Found the cell.')
+        user_selected_region = self.find_closest(self.retrieve_rois()[-1])
+        self.cell_name = f'cell_{user_selected_region.label:02}'
         if os.path.exists(self.cell_folder):
             logger.warning('Cell might already exist!')
-
+        past_regions: List[Region] = [user_selected_region]
         logger.warning('Just improved your selection. Start to track.')
-        self.track(cell_idx)
+
+        auto_rois: Set[str] = set()
+        user_inputs: Dict[int, Tuple[str, Region]] = dict()
+        auto_rois.add(self.add_roi(0, past_regions[0].cell_mask))
+        # TRACKING STARTS
         while True:
-            choice = ''
-            while choice.lower() not in ['s', 'r', 'd']:
-                choice = input('(S)ave, (R)edo, or (D)iscard.')
-            if choice.lower() == 's':
-                os.makedirs(os.path.join(self.log_folder, self.cell_name), exist_ok=True)
-                self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
-                self.roi_manager.save(os.path.join(self.cell_folder, 'RoiSet.zip'))
-                self.roi_manager.runCommand('Measure')
-                self.ij.IJ.saveAs('measurements', os.path.join(self.cell_folder, 'measurements.csv'))
-                self.ij.py.run_macro('run("Clear Results");', {})
+            n_step = min(self.total_frames - len(past_regions), self.config.frames_per_step)
+            for i_frame in range(len(past_regions), len(past_regions) + n_step):
+                # TODO adaptive upper and lower bound
+                if i_frame in user_inputs:
+                    past_regions.append(user_inputs[i_frame][1])
+                    # do not redo the frames with user inputs
+                    continue
+                regions = self.find_blobs(self.pixels[i_frame], None, None)
+                region_next_step = self.predictor.predict(past_regions, regions)
+                if region_next_step is None:
+                    raise NotImplementedError
+                past_regions.append(region_next_step)
+                auto_rois.add(self.add_roi(i_frame, region_next_step.cell_mask))
+            choice = user_cmd('(C)ontinue, (S)ave, or (D)iscard.', 'scd')
+            if choice == 'd':
+                return
+            elif choice == 's':
                 break
-            elif choice.lower() == 'r':
-                self.delete_auto()
-                self.read_user_input()
-                self.track(cell_idx)
-            else:
-                break
+            # to continue, check if user has some inputs
+            new_inputs = self.check_user_input(user_inputs, auto_rois)
+            if len(new_inputs) == 0:
+                # if user has no input, set the pointer to the next step
+                if len(past_regions) == self.total_frames:
+                    break
+                continue
+            # user has new inputs. read some and set the pointer to the first user input
+            # set the pointer to the step after the first user input
+            past_regions = past_regions[:min(ni[0] for ni in new_inputs)]
+            # delete the frames after the pointer but keep user's inputs
+            self.delete_auto(auto_rois, len(past_regions))
+            self.roi_manager.runCommand('Sort')
+        self.save()
+
+    def save(self):
+        self.roi_manager.runCommand('Sort')
+        os.makedirs(os.path.join(self.log_folder, self.cell_name), exist_ok=True)
+        self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
+        self.roi_manager.save(os.path.join(self.cell_folder, 'RoiSet.zip'))
+        self.roi_manager.runCommand('Measure')
+        self.ij.IJ.saveAs('measurements', os.path.join(self.cell_folder, 'measurements.csv'))
+        self.ij.py.run_macro('run("Clear Results");', {})
 
     def segment(self):
         self.init_ij()
         while True:
+            # Clean past traces
             self.delete_roi(list(range(len(self.retrieve_rois()))))
-            self.auto_rois = set()
-            self.trusted_cell_info = dict()
             self.retrieve_rois()
             self.cell_name = None
+            # do a new one
             self.segment_one_cell()
             logger.warning(f'Done with {self.cell_name}.')
-            time.sleep(0.5)
-
-            choice = ''
-            while choice.lower() not in ['c', 'e']:
-                choice = input('(C)ontinue or (E)xit.')
+            time.sleep(0.1)
+            choice = user_cmd('(C)ontinue or (E)xit.', 'ce')
             if choice.lower() == 'e':
                 break
 
@@ -197,19 +191,21 @@ class IJPort:
         coordinates = np.array([xs, ys]).T
         return coordinates, center
 
-    def find_closest(self, input_roi, frame: int):
+    def find_closest(self, input_roi) -> Region:
         _, input_center = self.read_roi(input_roi)
-
-        distances = list()
-        smooth, label_mask_clean, regions = self.find_blobs(frame)
-        for rp in regions:
-            distances.append(np.sqrt(np.sum((rp.centroid - input_center)**2)))
-        cell_idx = np.argmin(distances)
         self.delete_roi(0)
-        return int(cell_idx)
+        blobs = self.find_blobs(self.pixels[0], None, None)
+        min_distance, min_label = float('inf'), -1
+        for label in blobs.regions:
+            distance = np.sqrt(np.sum((blobs[label].centroid - input_center) ** 2))
+            if distance < min_distance:
+                min_distance = distance
+                min_label = label
+        region = blobs[min_label]
+        return region
 
-    def add_roi(self, frame_idx, cell_mask):
-        self.imp.setT(frame_idx+1)
+    def add_roi(self, frame_idx, cell_mask) -> str:
+        self.imp.setT(frame_idx + 1)
         polygon_class = sj.jimport('ij.gui.PolygonRoi')
         polygon = Mask(cell_mask).polygons().points[0].astype(float)
         roi = polygon_class(polygon[:, 0].tolist(), polygon[:, 1].tolist(), polygon.shape[0], 2)
@@ -217,7 +213,7 @@ class IJPort:
         # ov = overlay_class()
         # ov.add(roi)
         self.roi_manager.addRoi(roi)
-        self.auto_rois.add(roi.getName())
+        return roi.getName()
 
     def delete_roi(self, index: Union[int, List[int]]):
         if isinstance(index, int):
@@ -244,19 +240,12 @@ class IJPort:
     def cell_folder(self):
         return os.path.join(self.log_folder, self.cell_name)
 
-    def read_user_input(self):
-        for roi in self.retrieve_rois():
-            name = roi.getName()
-            frame_idx = int(name[:4]) - 1
-            if name in self.auto_rois or frame_idx in self.trusted_cell_info:
-                continue
-            # This is a new input
-            _, center = self.read_roi(roi)
-            self.trusted_cell_info[frame_idx] = {'x': center[0], 'y': center[1]}
-
-    def delete_auto(self):
+    def delete_auto(self, auto_rois: Set[str], after=None):
         to_delete = list()
         for idx, roi in enumerate(self.retrieve_rois()):
-            if roi.getName() in self.auto_rois:
+            frame = int(roi.getName()[:4]) - 1
+            if after is not None and frame < after:
+                continue
+            if roi.getName() in auto_rois:
                 to_delete.append(idx)
         self.delete_roi(to_delete)
