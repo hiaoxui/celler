@@ -60,27 +60,24 @@ class IJPort:
         self.pixels: Optional[np.ndarray] = None
         self.cell_name = None
 
-        # for current step
-
     def retrieve_rois(self):
         return [self.roi_manager.getRoi(i) for i in range(self.roi_manager.getCount())]
 
-    def _plot(self, smooth, label_mask_clean, regions, output_name):
-        fig, ax = plt.subplots(1, 1, figsize=(20, 20))
-        ax.imshow(smooth)
-        ax.contour(label_mask_clean, colors='red')
-        for idx, rp in enumerate(regions):
-            ax.text(*rp.centroid, str(idx))
-        fig.tight_layout()
-        fig.savefig(os.path.join(self.log_folder, f'{output_name}.pdf'))
-
-    def plot(self):
+    def plot(self, frame_idx=0, blob=None):
         if os.path.exists(self._np_data_path):
             self.pixels = np.load(self._np_data_path)
         else:
             self.init_ij()
-        smooth, label_mask_clean, regions = self.find_blobs(self.pixels[0], None, None)
-        self._plot(smooth, label_mask_clean, regions, 'cells')
+        if blob is None:
+            blob = self.find_blobs(self.pixels[frame_idx], None, None)
+        fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+        img = self.pixels[frame_idx]
+        ax.imshow(img)
+        ax.contour(blob.label_mask, colors='red')
+        for region in blob.regions.values():
+            ax.text(*region.centroid, str(region.label))
+        fig.tight_layout()
+        fig.savefig(os.path.join(self.log_folder, f'frame_{frame_idx}.pdf'))
 
     @property
     def total_frames(self) -> int:
@@ -129,13 +126,18 @@ class IJPort:
                     past_regions.append(user_inputs[i_frame][1])
                     # do not redo the frames with user inputs
                     continue
-                regions = self.find_blobs(self.pixels[i_frame], None, None)
+                lower_threshold, upper_threshold = self.guess_threshold(past_regions)
+                regions = self.find_blobs(
+                    self.pixels[i_frame], lower_threshold, upper_threshold,
+                    (past_regions[-1].centroid[1], past_regions[-1].centroid[0]) if len(past_regions) > 0 else None
+                )
                 region_next_step = self.predictor.predict(past_regions, regions)
+                # self.plot(i_frame, regions)
                 if region_next_step is None:
                     raise NotImplementedError
                 past_regions.append(region_next_step)
                 auto_rois.add(self.add_roi(i_frame, region_next_step.cell_mask))
-            choice = user_cmd('(C)ontinue, (S)ave, or (D)iscard.', 'scd')
+            choice = user_cmd('(C)ontinue, (S)ave, or (D)iscard.', 'csd')
             if choice == 'd':
                 return
             elif choice == 's':
@@ -154,6 +156,22 @@ class IJPort:
             self.delete_auto(auto_rois, len(past_regions))
             self.roi_manager.runCommand('Sort')
         self.save()
+
+    def guess_threshold(self, past_regions: List[Region]) -> Union[Tuple[None, None], Tuple[float, float]]:
+        past_autos = list(filter(lambda z: not z.manual, past_regions))[::-1]
+        if len(past_autos) == 0:
+            return None, None
+        weights, lowers, uppers = list(), list(), list()
+        for i, pr in enumerate(past_autos[:5]):
+            weights.append(np.exp(-i/10))
+            lowers.append(np.min(pr.intensity))
+            uppers.append(np.max(pr.intensity))
+        weights, lowers, uppers = map(np.array, [weights, lowers, uppers])
+        lower = (lowers * weights).sum() / weights.sum()
+        upper = (uppers * weights).sum() / weights.sum()
+        lower_std = max(np.sqrt(((lowers - lower)**2 * weights).sum() / weights.sum()), 200.)
+        upper_std = max(np.sqrt(((uppers - upper)**2 * weights).sum() / weights.sum()), 200.)
+        return lower - lower_std, upper + upper_std
 
     def save(self):
         self.roi_manager.runCommand('Sort')

@@ -20,7 +20,6 @@ class Config:
     gaussian_sigma: float
     threshold_adjustment: float
     min_size: int
-    max_hole: int
     max_size: int
     # for tracking
     search_range: float

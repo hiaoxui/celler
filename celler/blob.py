@@ -20,6 +20,7 @@ class Region:
     extent: Optional[np.ndarray] = None
     intensity: Optional[np.ndarray] = None
     cell_mask: Optional[np.ndarray] = None
+    manual: bool = False
 
     @classmethod
     def from_roi(cls, coordinates: np.ndarray, image_smoothed):
@@ -31,6 +32,7 @@ class Region:
         rp = measure.regionprops(polygon_mask)
         assert len(rp) == 1
         region = Region.from_rp(rp[0], polygon_mask, None, image_smoothed)
+        region.manual = True
         return region
 
     @classmethod
@@ -66,19 +68,30 @@ class BlobFinder:
     def __init__(self, config):
         self.config = config
 
-    def __call__(self, img: np.ndarray, lower: Optional[float], upper: Optional[float]):
+    def __call__(
+            self, img: np.ndarray, lower: Optional[float], upper: Optional[float],
+            around: Optional[Tuple[int, int]] = None
+    ):
         smooth = filters.gaussian(img, self.config.gaussian_sigma, preserve_range=True)
         smoothed_std = smooth.std()
         otsu_threshold = threshold_otsu(smooth)
-        if lower is not None and upper is not None:
-            lower = otsu_threshold + lower * smoothed_std
-            upper = otsu_threshold + upper * smoothed_std
-        else:
-            lower = otsu_threshold + self.config.threshold_adjustment * np.std(img)
-            upper = float('inf')
+        if lower is None:
+            lower = otsu_threshold + self.config.threshold_adjustment * smoothed_std
+        # if upper is None:
+        #     upper = float('inf')
+        # TODO upper bound is problematic because of the ring problem. consider improving it
+        upper = float('inf')
         cell_mask = (smooth < upper) & (smooth > lower)
+        if around is not None:
+            affinity_mask = np.ones(smooth.shape, bool)
+            for axis in [0, 1]:
+                ar = np.arange(smooth.shape[axis])
+                axis_mask = (ar < around[axis] + self.config.search_range) & (ar > around[axis] - self.config.search_range)
+                affinity_mask &= np.expand_dims(axis_mask, 1-axis)
+            cell_mask &= affinity_mask
         cell_mask_remove_small = morphology.remove_small_objects(cell_mask, self.config.min_size)
-        cell_mask_remove_hole = morphology.remove_small_holes(cell_mask_remove_small.copy(), self.config.max_hole)
+        # TODO remove ring objects
+        cell_mask_remove_hole = morphology.remove_small_holes(cell_mask_remove_small.copy(), self.config.max_size)
         hole_mask = cell_mask_remove_hole & ~cell_mask_remove_small
         label_mask_tmp = measure.label(cell_mask_remove_hole)
         region_properties = measure.regionprops(label_mask_tmp)
@@ -89,3 +102,4 @@ class BlobFinder:
         cell_mask = cell_mask_remove_big
         label_mask = measure.label(cell_mask)
         return Blob(label_mask, smooth, hole_mask)
+

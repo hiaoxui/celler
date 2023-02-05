@@ -12,15 +12,13 @@ def main():
     parser.add_argument('--gaussian-sigma', type=float, default=2.0)
     parser.add_argument('--threshold-adjustment', type=float, default=-1.5)
     parser.add_argument('--min-size', type=int, default=20**2)
-    parser.add_argument('--max-hole', type=float, default=40**2)
     parser.add_argument('--max-size', type=float, default=1000**2)
     parser.add_argument('--search-range', type=float, default=500.)
 
     args = parser.parse_args()
     logger.setLevel('INFO')
     config = Config(
-        args.gaussian_sigma, args.threshold_adjustment, args.min_size, args.max_hole, args.max_size,
-        args.search_range
+        args.gaussian_sigma, args.threshold_adjustment, args.min_size, args.max_size, args.search_range
     )
 
     port = IJPort(args.i, config)
