@@ -24,7 +24,7 @@ class Config:
     search_range: float
     # others
     threshold_adjustment: float = -1.5
-    frames_per_step: int = 10
+    frames_per_step: int = 20
     intensity_variation: float = 0.5
 
 

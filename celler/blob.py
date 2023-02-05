@@ -22,6 +22,9 @@ class Region:
     cell_mask: Optional[np.ndarray] = None
     manual: bool = False
 
+    def top50mean(self):
+        return float(self.intensity[self.intensity > np.median(self.intensity)].mean())
+
     @classmethod
     def from_roi(cls, coordinates: np.ndarray, image_smoothed):
         coordinates = coordinates.astype(np.int16)

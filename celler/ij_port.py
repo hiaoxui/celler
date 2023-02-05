@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 
 from .utils import logger, Config, user_cmd
 from .blob import Region, BlobFinder
-from .predict import SimpleTrackPYPredictor
+from .predict import SimpleTrackPYPredictor, BoboPredictor
 
 
 class IJPort:
@@ -50,7 +50,8 @@ class IJPort:
         self._np_data_path = os.path.join(self.log_folder, 'cache', 'pixels.npy')
         self.image_file_path = image_file_path
         os.makedirs(os.path.join(self.log_folder, 'cache'), exist_ok=True)
-        self.predictor = SimpleTrackPYPredictor(config)
+        # self.predictor = SimpleTrackPYPredictor(config)
+        self.predictor = BoboPredictor(config)
         # shared objects
         self.roi_manager = self.dataset = self.imp = self.ij = None
         self.pixels: Optional[np.ndarray] = None
@@ -175,7 +176,7 @@ class IJPort:
             weights.append(np.exp(-i/10))
             lowers.append(np.min(pr.intensity))
             uppers.append(np.max(pr.intensity))
-            means.append(pr.intensity[pr.intensity > np.median(pr.intensity)].mean())
+            means.append(pr.top50mean())
         weights, lowers, uppers, means = map(np.array, [weights, lowers, uppers, means])
         strategy = 'mean'
         if strategy == 'std':
@@ -254,6 +255,7 @@ class IJPort:
         # ov = overlay_class()
         # ov.add(roi)
         self.roi_manager.addRoi(roi)
+        self.roi_manager.select(len(self.retrieve_rois())-1)
         return roi.getName()
 
     def delete_roi(self, index: Union[int, List[int]]):
