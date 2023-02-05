@@ -18,13 +18,14 @@ def get_logger():
 class Config:
     # for blob finding
     gaussian_sigma: float
-    threshold_adjustment: float
     min_size: int
     max_size: int
     # for tracking
     search_range: float
     # others
-    frames_per_step: int = 3
+    threshold_adjustment: float = -1.5
+    frames_per_step: int = 10
+    intensity_variation: float = 0.5
 
 
 logger = get_logger()

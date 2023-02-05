@@ -72,20 +72,20 @@ class BlobFinder:
             self, img: np.ndarray, lower: Optional[float], upper: Optional[float],
             around: Optional[Tuple[int, int]] = None
     ):
-        smooth = filters.gaussian(img, self.config.gaussian_sigma, preserve_range=True)
-        smoothed_std = smooth.std()
-        otsu_threshold = threshold_otsu(smooth)
+        otsu_threshold = threshold_otsu(img) + self.config.threshold_adjustment * img.std()
         if lower is None:
-            lower = otsu_threshold + self.config.threshold_adjustment * smoothed_std
+            lower = otsu_threshold
+        else:
+            lower = max(otsu_threshold, lower)
         # if upper is None:
         #     upper = float('inf')
         # TODO upper bound is problematic because of the ring problem. consider improving it
         upper = float('inf')
-        cell_mask = (smooth < upper) & (smooth > lower)
+        cell_mask = (img < upper) & (img > lower)
         if around is not None:
-            affinity_mask = np.ones(smooth.shape, bool)
+            affinity_mask = np.ones(img.shape, bool)
             for axis in [0, 1]:
-                ar = np.arange(smooth.shape[axis])
+                ar = np.arange(img.shape[axis])
                 axis_mask = (ar < around[axis] + self.config.search_range) & (ar > around[axis] - self.config.search_range)
                 affinity_mask &= np.expand_dims(axis_mask, 1-axis)
             cell_mask &= affinity_mask
@@ -101,5 +101,5 @@ class BlobFinder:
                 cell_mask_remove_big[label_mask_tmp == r.label] = 0
         cell_mask = cell_mask_remove_big
         label_mask = measure.label(cell_mask)
-        return Blob(label_mask, smooth, hole_mask)
+        return Blob(label_mask, img, hole_mask)
 

@@ -1,20 +1,16 @@
 from typing import *
 import time
-import pickle
 import os
 
 import imagej
 import numpy as np
 import scyjava as sj
-from skimage import filters, morphology, measure
-from skimage.filters import threshold_otsu
-from imantics import Polygons, Mask
-import trackpy
+from skimage import filters
+from imantics import Mask
 from matplotlib import pyplot as plt
-import pandas as pd
 
 from .utils import logger, Config, user_cmd
-from .blob import Region, Blob, BlobFinder
+from .blob import Region, BlobFinder
 from .predict import SimpleTrackPYPredictor
 
 
@@ -58,7 +54,15 @@ class IJPort:
         # shared objects
         self.roi_manager = self.dataset = self.imp = self.ij = None
         self.pixels: Optional[np.ndarray] = None
+        self._smoothed: Dict[int, np.ndarray] = dict()
         self.cell_name = None
+
+    def smoothed(self, frame_idx: int):
+        if frame_idx not in self._smoothed:
+            self._smoothed[frame_idx] = filters.gaussian(
+                self.pixels[frame_idx], self.config.gaussian_sigma, preserve_range=True
+            )
+        return self._smoothed[frame_idx]
 
     def retrieve_rois(self):
         return [self.roi_manager.getRoi(i) for i in range(self.roi_manager.getCount())]
@@ -69,7 +73,7 @@ class IJPort:
         else:
             self.init_ij()
         if blob is None:
-            blob = self.find_blobs(self.pixels[frame_idx], None, None)
+            blob = self.find_blobs(self.smoothed(frame_idx), None, None)
         fig, ax = plt.subplots(1, 1, figsize=(15, 15))
         img = self.pixels[frame_idx]
         ax.imshow(img)
@@ -106,8 +110,8 @@ class IJPort:
         logger.warning("Select your cell.")
         while len(self.retrieve_rois()) == 0:
             time.sleep(1)
-        # logger.warning('Found the cell.')
-        user_selected_region = self.find_closest(self.retrieve_rois()[-1])
+        logger.warning('Found the cell.')
+        user_selected_region = self.find_closest()
         self.cell_name = f'cell_{user_selected_region.label:02}'
         if os.path.exists(self.cell_folder):
             logger.warning('Cell might already exist!')
@@ -128,13 +132,14 @@ class IJPort:
                     continue
                 lower_threshold, upper_threshold = self.guess_threshold(past_regions)
                 regions = self.find_blobs(
-                    self.pixels[i_frame], lower_threshold, upper_threshold,
+                    self.smoothed(i_frame), lower_threshold, upper_threshold,
                     (past_regions[-1].centroid[1], past_regions[-1].centroid[0]) if len(past_regions) > 0 else None
                 )
                 region_next_step = self.predictor.predict(past_regions, regions)
                 # self.plot(i_frame, regions)
                 if region_next_step is None:
-                    raise NotImplementedError
+                    logger.warning("The cell is lost!")
+                    break
                 past_regions.append(region_next_step)
                 auto_rois.add(self.add_roi(i_frame, region_next_step.cell_mask))
             choice = user_cmd('(C)ontinue, (S)ave, or (D)iscard.', 'csd')
@@ -157,21 +162,34 @@ class IJPort:
             self.roi_manager.runCommand('Sort')
         self.save()
 
-    def guess_threshold(self, past_regions: List[Region]) -> Union[Tuple[None, None], Tuple[float, float]]:
-        past_autos = list(filter(lambda z: not z.manual, past_regions))[::-1]
-        if len(past_autos) == 0:
+    def guess_threshold(
+            self, past_regions: List[Region], take_user_input: bool = False
+    ) -> Union[Tuple[None, None], Tuple[float, float]]:
+        if not take_user_input:
+            past_regions = list(filter(lambda z: not z.manual, past_regions))
+        past_regions = past_regions[::-1]
+        if len(past_regions) == 0:
             return None, None
-        weights, lowers, uppers = list(), list(), list()
-        for i, pr in enumerate(past_autos[:5]):
+        weights, lowers, uppers, means = list(), list(), list(), list()
+        for i, pr in enumerate(past_regions[:5]):
             weights.append(np.exp(-i/10))
             lowers.append(np.min(pr.intensity))
             uppers.append(np.max(pr.intensity))
-        weights, lowers, uppers = map(np.array, [weights, lowers, uppers])
-        lower = (lowers * weights).sum() / weights.sum()
-        upper = (uppers * weights).sum() / weights.sum()
-        lower_std = max(np.sqrt(((lowers - lower)**2 * weights).sum() / weights.sum()), 200.)
-        upper_std = max(np.sqrt(((uppers - upper)**2 * weights).sum() / weights.sum()), 200.)
-        return lower - lower_std, upper + upper_std
+            means.append(pr.intensity[pr.intensity > np.median(pr.intensity)].mean())
+        weights, lowers, uppers, means = map(np.array, [weights, lowers, uppers, means])
+        strategy = 'mean'
+        if strategy == 'std':
+            lower = (lowers * weights).sum() / weights.sum()
+            upper = (uppers * weights).sum() / weights.sum()
+            lower_std = max(np.sqrt(((lowers - lower)**2 * weights).sum() / weights.sum()), 50.)
+            upper_std = max(np.sqrt(((uppers - upper)**2 * weights).sum() / weights.sum()), 50.)
+            lower -= lower_std
+            upper += upper_std
+        else:
+            mean_mean = (weights * means).sum() / weights.sum()
+            lower = mean_mean * (1 - self.config.intensity_variation)
+            upper = mean_mean * (1 + self.config.intensity_variation)
+        return lower, upper
 
     def save(self):
         self.roi_manager.runCommand('Sort')
@@ -201,18 +219,23 @@ class IJPort:
     def read_roi(roi):
         center = np.array([roi.getBounds().getCenterX(), roi.getBounds().getCenterY()])
         if roi.getTypeAsString() != 'Polygon':
-            return None, center
-        n = roi.getNCoordinates()
-        xs, ys = np.array(roi.getXCoordinates()[:n], dtype=float), np.array(roi.getYCoordinates()[:n], dtype=float)
-        xs += roi.getXBase()
-        ys += roi.getYBase()
+            xs, ys = list(map(float, roi.getPolygon().xpoints)), list(map(float, roi.getPolygon().ypoints))
+        else:
+            n = roi.getNCoordinates()
+            xs, ys = np.array(roi.getXCoordinates()[:n], dtype=float), np.array(roi.getYCoordinates()[:n], dtype=float)
+            xs += roi.getXBase()
+            ys += roi.getYBase()
         coordinates = np.array([xs, ys]).T
         return coordinates, center
 
-    def find_closest(self, input_roi) -> Region:
-        _, input_center = self.read_roi(input_roi)
+    def find_closest(self) -> Region:
+        polygon_coo, input_center = self.read_roi(self.retrieve_rois()[0])
         self.delete_roi(0)
-        blobs = self.find_blobs(self.pixels[0], None, None)
+        region = Region.from_roi(polygon_coo, self.smoothed(0))
+        lower = region.intensity.min() * (1 - self.config.intensity_variation)
+        upper = region.intensity.max() * (1 + self.config.intensity_variation)
+        blobs = self.find_blobs(self.smoothed(0), lower, upper)
+        # self.plot(0, blobs)
         min_distance, min_label = float('inf'), -1
         for label in blobs.regions:
             distance = np.sqrt(np.sum((blobs[label].centroid - input_center) ** 2))
