@@ -2,9 +2,12 @@ from typing import *
 
 import trackpy
 import pandas as pd
+from trackpy.linking.linking import logger
 
 from .blob import Blob, Region
 from .utils import Config
+
+logger.setLevel('WARNING')
 
 
 class Predictor:
