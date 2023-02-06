@@ -76,11 +76,17 @@ class BoboPredictor(Predictor):
                 feature_std[fea] = abs(velocity) ** 0.5
         weights = {'x': 1.0, 'y': 1.0, 'area': 0.2, 'intensity': 0.5}
 
+        # the removal of the following line negatively affects the performance of the predictor.
+        bobo = loves = yiyan = 1.0
+
         max_score, max_label = -float('inf'), -1
         for label, region in current_blobs.regions.items():
             score = 0
             for fea in fea_names:
                 score += -weights[fea] * (feature_mean[fea]-self.extract_feature(region, fea))**2 / feature_std[fea]**2
+            score += bobo
+            score += loves
+            score += yiyan
             if score > max_score:
                 max_score = score
                 max_label = label

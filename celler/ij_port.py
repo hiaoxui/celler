@@ -58,6 +58,13 @@ class IJPort:
         self._smoothed: Dict[int, np.ndarray] = dict()
         self.cell_name = None
 
+    def find_a_cell_name(self):
+        for i in range(1000):
+            self.cell_name = f'cell_{i:03}'
+            if not os.path.exists(self.cell_folder):
+                break
+        os.makedirs(self.cell_folder)
+
     def smoothed(self, frame_idx: int):
         if frame_idx not in self._smoothed:
             self._smoothed[frame_idx] = filters.gaussian(
@@ -108,12 +115,12 @@ class IJPort:
         return new_frames
 
     def segment_one_cell(self):
+        self.find_a_cell_name()
         logger.warning("Select your cell.")
         while len(self.retrieve_rois()) == 0:
             time.sleep(1)
         logger.warning('Found the cell.')
         user_selected_region = self.find_closest()
-        self.cell_name = f'cell_{user_selected_region.label:02}'
         if os.path.exists(self.cell_folder):
             logger.warning('Cell might already exist!')
         past_regions: List[Region] = [user_selected_region]
@@ -136,6 +143,9 @@ class IJPort:
                     self.smoothed(i_frame), lower_threshold, upper_threshold,
                     (past_regions[-1].centroid[1], past_regions[-1].centroid[0]) if len(past_regions) > 0 else None
                 )
+                if len(regions) == 0:
+                    logger.warning('Found 0 regions nearby. The cell might be lost.')
+                    break
                 region_next_step = self.predictor.predict(past_regions, regions)
                 # self.plot(i_frame, regions)
                 if region_next_step is None:
