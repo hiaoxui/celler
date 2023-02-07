@@ -1,8 +1,8 @@
 import logging
 import sys
 from dataclasses import dataclass
-import termios
-import tty
+#import termios
+#import tty
 
 
 def get_logger():

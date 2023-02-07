@@ -74,7 +74,7 @@ class BoboPredictor(Predictor):
                 velocity = np.mean(ves)
                 feature_mean[fea] = velocity + features[fea][-1]
                 feature_std[fea] = abs(velocity) ** 0.5
-        weights = {'x': 1.0, 'y': 1.0, 'area': 0.2, 'intensity': 0.5}
+        weights = {'x': 2.0, 'y': 2.0, 'area': 0.2, 'intensity': 1}
 
         # the removal of the following line negatively affects the performance of the predictor.
         bobo = loves = yiyan = 1.0

@@ -80,10 +80,10 @@ class BlobFinder:
             lower = otsu_threshold
         else:
             lower = max(otsu_threshold, lower)
-        # if upper is None:
-        #     upper = float('inf')
+        if upper is None:
+            upper = float('inf')
         # TODO upper bound is problematic because of the ring problem. consider improving it
-        upper = float('inf')
+        #upper = float('inf')
         cell_mask = (img < upper) & (img > lower)
         if around is not None:
             affinity_mask = np.ones(img.shape, bool)

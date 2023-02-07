@@ -124,6 +124,7 @@ class IJPort:
         if os.path.exists(self.cell_folder):
             logger.warning('Cell might already exist!')
         past_regions: List[Region] = [user_selected_region]
+        # TODO add process to allow me return and find new cell.
         logger.warning('Just improved your selection. Start to track.')
 
         auto_rois: Set[str] = set()
