@@ -114,6 +114,9 @@ class IJPort:
             new_frames.append((frame, region))
         return new_frames
 
+    def is_interrupted(self):
+        return len(self.roi_manager.getSelectedIndexes()) == 0
+
     def segment_one_cell(self):
         self.find_a_cell_name()
         logger.warning("Select your cell.")
@@ -124,7 +127,6 @@ class IJPort:
         if os.path.exists(self.cell_folder):
             logger.warning('Cell might already exist!')
         past_regions: List[Region] = [user_selected_region]
-        # TODO add process to allow me return and find new cell.
         logger.warning('Just improved your selection. Start to track.')
 
         auto_rois: Set[str] = set()
@@ -132,9 +134,7 @@ class IJPort:
         auto_rois.add(self.add_roi(0, past_regions[0].cell_mask))
         # TRACKING STARTS
         while True:
-            n_step = min(self.total_frames - len(past_regions), self.config.frames_per_step)
-            for i_frame in range(len(past_regions), len(past_regions) + n_step):
-                # TODO adaptive upper and lower bound
+            for i_frame in range(len(past_regions), self.total_frames):
                 if i_frame in user_inputs:
                     past_regions.append(user_inputs[i_frame][1])
                     # do not redo the frames with user inputs
@@ -151,6 +151,8 @@ class IJPort:
                 # self.plot(i_frame, regions)
                 if region_next_step is None:
                     logger.warning("The cell is lost!")
+                    break
+                if self.is_interrupted():
                     break
                 past_regions.append(region_next_step)
                 auto_rois.add(self.add_roi(i_frame, region_next_step.cell_mask))
