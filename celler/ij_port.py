@@ -158,6 +158,7 @@ class IJPort:
                 auto_rois.add(self.add_roi(i_frame, region_next_step.cell_mask))
             choice = user_cmd('(C)ontinue, (S)ave, or (D)iscard.', 'csd')
             if choice == 'd':
+                self.delete_roi(list(range(len(self.retrieve_rois()))))
                 return
             elif choice == 's':
                 break
