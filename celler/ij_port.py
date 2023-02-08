@@ -174,6 +174,7 @@ class IJPort:
             # delete the frames after the pointer but keep user's inputs
             self.delete_auto(auto_rois, len(past_regions))
             self.roi_manager.runCommand('Sort')
+            self.roi_manager.select(len(self.retrieve_rois())-1)
         self.save()
 
     def guess_threshold(
