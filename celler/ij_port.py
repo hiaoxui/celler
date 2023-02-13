@@ -1,6 +1,9 @@
 from typing import *
 import time
+from datetime import datetime
 import os
+import re
+import json
 
 import imagej
 import numpy as np
@@ -60,6 +63,18 @@ class IJPort:
         self._smoothed: Dict[tuple[float, int], np.ndarray] = dict()
         self.queue_started = False
         self.async_smooth = False
+        self.past_cell_centers = dict()
+
+    def read_past_cells(self):
+        for folder in os.listdir(self.log_folder):
+            if not re.findall(r'^cell_\d{3}$', folder):
+                continue
+            info_path = os.path.join(self.log_folder, folder, 'meta.json')
+            if not os.path.exists(info_path):
+                logger.warning('Meta missing for ' + folder)
+                continue
+            meta = json.load(open(info_path))
+            self.past_cell_centers[folder] = np.array([meta['x'], meta['y']])
 
     def start_smooth(self):
         if self.queue_started or not self.async_smooth:
@@ -85,6 +100,15 @@ class IJPort:
                     self.pixels[frame_idx], self.config.gaussian_sigma, self.log_folder, frame_idx
                 )
         return self._smoothed[(self.config.gaussian_sigma, frame_idx)]
+
+    def was_done(self, center: np.ndarray, affinity=100.):
+        for cell_name, ctr in self.past_cell_centers.items():
+            if np.sqrt(np.sum((ctr - center)**2)) < affinity:
+                logger.warning(
+                    f'WARNING: The cell might have been tracked already. Folder: {cell_name}. Old center: {ctr}.'
+                )
+                return True
+        return False
 
     def retrieve_rois(self):
         return [self.roi_manager.getRoi(i) for i in range(self.roi_manager.getCount())]
@@ -139,8 +163,11 @@ class IJPort:
             time.sleep(1)
         logger.warning('Found the cell.')
         user_selected_region = self.find_closest()
-        if os.path.exists(self.cell_folder):
-            logger.warning('Cell might already exist!')
+        if self.was_done(user_selected_region.centroid):
+            choice = user_cmd('(C)ontinue or (E)xit?', 'ce')
+            if choice == 'e':
+                return
+
         past_regions: List[Region] = [user_selected_region]
         logger.warning('Just improved your selection. Start to track.')
 
@@ -194,7 +221,7 @@ class IJPort:
             self.delete_auto(auto_rois, len(past_regions))
             self.roi_manager.runCommand('Sort')
             self.roi_manager.select(len(self.retrieve_rois())-1)
-        self.save()
+        self.save(past_regions[0])
 
     def guess_threshold(
             self, past_regions: List[Region], take_user_input: bool = False
@@ -225,7 +252,14 @@ class IJPort:
             upper = mean_mean * (1 + self.config.intensity_variation)
         return lower, upper
 
-    def save(self):
+    def save(self, first_region):
+        self.past_cell_centers[self.cell_name] = first_region.centroid
+        with open(os.path.join(self.cell_folder, 'meta.json'), 'w') as fp:
+            json.dump({
+                'x': float(first_region.centroid[0]), 'y': float(first_region.centroid[1]),
+                'cell_name': self.cell_name, 'timestamp': time.time(),
+                'time': str(datetime.now())
+            }, fp, indent=2)
         self.roi_manager.runCommand('Sort')
         os.makedirs(os.path.join(self.log_folder, self.cell_name), exist_ok=True)
         self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
@@ -237,6 +271,7 @@ class IJPort:
     def segment(self):
         self.init_ij()
         self.start_smooth()
+        self.read_past_cells()
         while True:
             # Clean past traces
             self.delete_roi(list(range(len(self.retrieve_rois()))))
