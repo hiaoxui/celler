@@ -4,12 +4,9 @@ from collections import defaultdict
 import trackpy
 import numpy as np
 import pandas as pd
-from trackpy.linking.linking import logger
 
 from .blob import Blob, Region
-from .utils import Config
-
-logger.setLevel('WARNING')
+from .utils import Config, logger
 
 
 class Predictor:
@@ -86,7 +83,9 @@ class BoboPredictor(Predictor):
         for label, region in current_blobs.regions.items():
             score = 0
             for fea in fea_names:
-                score += -weights[fea] * (feature_mean[fea]-self.extract_feature(region, fea))**2 / feature_std[fea]**2
+                sub = (feature_mean[fea]-self.extract_feature(region, fea))**2 / feature_std[fea]**2
+                score += -sub * weights[fea]
+                logger.debug(f'cell {label} {fea}={sub}')
             score += bobo
             score += loves
             score += yiyan
