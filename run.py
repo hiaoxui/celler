@@ -13,11 +13,11 @@ def main():
     parser.add_argument('--min-size', type=int, default=20**2)
     parser.add_argument('--max-size', type=float, default=1000**2)
     parser.add_argument('--search-range', type=float, default=500.)
-
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
     logger.setLevel('INFO')
     config = Config(
-        args.gaussian_sigma, args.min_size, args.max_size, args.search_range
+        args.gaussian_sigma, args.min_size, args.max_size, args.search_range, debug=args.debug
     )
 
     port = IJPort(args.i, config)

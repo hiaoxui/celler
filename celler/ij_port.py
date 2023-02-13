@@ -12,6 +12,7 @@ from matplotlib import pyplot as plt
 from .utils import logger, Config, user_cmd
 from .blob import Region, BlobFinder
 from .predict import SimpleTrackPYPredictor, BoboPredictor
+from .smooth import smooth_img, smooth_queue, smooth_one_img
 
 
 class IJPort:
@@ -55,8 +56,16 @@ class IJPort:
         # shared objects
         self.roi_manager = self.dataset = self.imp = self.ij = None
         self.pixels: Optional[np.ndarray] = None
-        self._smoothed: Dict[int, np.ndarray] = dict()
         self.cell_name = None
+        self._smoothed: Dict[tuple[float, int], np.ndarray] = dict()
+        self.queue_started = False
+        self.async_smooth = False
+
+    def start_smooth(self):
+        if self.queue_started or not self.async_smooth:
+            return
+        self.queue_started = True
+        smooth_img(self.pixels, self.config.gaussian_sigma, self.log_folder)
 
     def find_a_cell_name(self):
         for i in range(1000):
@@ -66,11 +75,16 @@ class IJPort:
         os.makedirs(self.cell_folder)
 
     def smoothed(self, frame_idx: int):
-        if frame_idx not in self._smoothed:
-            self._smoothed[frame_idx] = filters.gaussian(
-                self.pixels[frame_idx], self.config.gaussian_sigma, preserve_range=True
-            )
-        return self._smoothed[frame_idx]
+        self.start_smooth()
+        while (self.config.gaussian_sigma, frame_idx) not in self._smoothed:
+            if self.async_smooth:
+                triple = smooth_queue.get()
+                self._smoothed[(triple[0], triple[1])] = triple[2]
+            else:
+                self._smoothed[(self.config.gaussian_sigma, frame_idx)] = smooth_one_img(
+                    self.pixels[frame_idx], self.config.gaussian_sigma, self.log_folder, frame_idx
+                )
+        return self._smoothed[(self.config.gaussian_sigma, frame_idx)]
 
     def retrieve_rois(self):
         return [self.roi_manager.getRoi(i) for i in range(self.roi_manager.getCount())]
@@ -80,8 +94,9 @@ class IJPort:
             self.pixels = np.load(self._np_data_path)
         else:
             self.init_ij()
+        self.start_smooth()
         if blob is None:
-            blob = self.find_blobs(self.smoothed(frame_idx), None, None)
+            blob = self.find_blobs(self.smoothed(frame_idx), None, None, frame=frame_idx)
         fig, ax = plt.subplots(1, 1, figsize=(15, 15))
         img = self.pixels[frame_idx]
         ax.imshow(img)
@@ -142,13 +157,16 @@ class IJPort:
                 lower_threshold, upper_threshold = self.guess_threshold(past_regions)
                 regions = self.find_blobs(
                     self.smoothed(i_frame), lower_threshold, upper_threshold,
-                    (past_regions[-1].centroid[1], past_regions[-1].centroid[0]) if len(past_regions) > 0 else None
+                    (past_regions[-1].centroid[1], past_regions[-1].centroid[0]) if len(past_regions) > 0 else None,
+                    frame=i_frame,
                 )
                 if len(regions) == 0:
                     logger.warning('Found 0 regions nearby. The cell might be lost.')
                     break
                 region_next_step = self.predictor.predict(past_regions, regions)
-                # self.plot(i_frame, regions)
+                if self.config.debug:
+                    self.plot(i_frame, regions)
+                    print('Label:', region_next_step.label)
                 if region_next_step is None:
                     logger.warning("The cell is lost!")
                     break
@@ -218,6 +236,7 @@ class IJPort:
 
     def segment(self):
         self.init_ij()
+        self.start_smooth()
         while True:
             # Clean past traces
             self.delete_roi(list(range(len(self.retrieve_rois()))))
@@ -250,7 +269,7 @@ class IJPort:
         region = Region.from_roi(polygon_coo, self.smoothed(0))
         lower = region.intensity.min() * (1 - self.config.intensity_variation)
         upper = region.intensity.max() * (1 + self.config.intensity_variation)
-        blobs = self.find_blobs(self.smoothed(0), lower, upper)
+        blobs = self.find_blobs(self.smoothed(0), lower, upper, frame=0)
         # self.plot(0, blobs)
         min_distance, min_label = float('inf'), -1
         for label in blobs.regions:

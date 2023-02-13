@@ -22,6 +22,7 @@ class Config:
     # others
     threshold_adjustment: float = -1.5
     intensity_variation: float = 0.5
+    debug: bool = False
 
 
 def user_cmd(prompt: str, choices: str):

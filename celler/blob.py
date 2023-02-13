@@ -53,8 +53,9 @@ class Region:
 
 
 class Blob:
-    def __init__(self, label_mask, image, hole_mask):
+    def __init__(self, label_mask, image, hole_mask, frame=None):
         self.label_mask = label_mask
+        self.frame: Optional[int] = frame
         self.regions = {
             rp.label: Region.from_rp(rp, label_mask, hole_mask, image)
             for rp in measure.regionprops(label_mask)
@@ -73,7 +74,7 @@ class BlobFinder:
 
     def __call__(
             self, img: np.ndarray, lower: Optional[float], upper: Optional[float],
-            around: Optional[Tuple[int, int]] = None
+            around: Optional[Tuple[int, int]] = None, frame: int = None
     ):
         otsu_threshold = threshold_otsu(img) + self.config.threshold_adjustment * img.std()
         if lower is None:
@@ -104,5 +105,5 @@ class BlobFinder:
                 cell_mask_remove_big[label_mask_tmp == r.label] = 0
         cell_mask = cell_mask_remove_big
         label_mask = measure.label(cell_mask)
-        return Blob(label_mask, img, hole_mask)
+        return Blob(label_mask, img, hole_mask, frame)
 
