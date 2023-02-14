@@ -126,24 +126,29 @@ class IJPort:
     def total_frames(self) -> int:
         return self.pixels.shape[0]
 
-    def check_user_input(
-            self, user_inputs: Dict[int, Tuple[str, Region]], auto_rois: Set[str]
-    ) -> List[Tuple[int, Region]]:
-        new_frames = list()
-        for roi in self.retrieve_rois():
+    def check_user_input(self, user_inputs: Dict[int, Tuple[str, Region]], auto_rois: Set[str]) -> int:
+        first_user_input_frame = 10000
+        to_delete = list()
+        to_add = list()
+        for roi_idx, roi in enumerate(self.retrieve_rois()):
             if roi.getName() in auto_rois:
                 continue
             frame = int(roi.getName()[:4]) - 1
             if frame in user_inputs and roi.getName() == user_inputs[frame][0]:
                 # It has been recorded
                 continue
-            coo, center = self.read_roi(roi)
-            region = Region.from_roi(
-                coo, filters.gaussian(self.pixels[frame], self.config.gaussian_sigma, preserve_range=True)
-            )
-            user_inputs[frame] = (roi.getName(), region)
-            new_frames.append((frame, region))
-        return new_frames
+            first_user_input_frame = min(first_user_input_frame, frame)
+            is_refined, region = self.parse_user_input(roi, frame)
+            if not is_refined:
+                user_inputs[frame] = (roi.getName(), region)
+            else:
+                to_delete.extend(self.roi_by_frame(frame))
+                to_add.append([frame, region.cell_mask])
+
+        self.delete_roi(to_delete)
+        for frame, cm in to_add:
+            auto_rois.add(self.add_roi(frame, cm))
+        return first_user_input_frame
 
     def is_interrupted(self):
         return len(self.roi_manager.getSelectedIndexes()) == 0
@@ -153,7 +158,10 @@ class IJPort:
         while len(self.retrieve_rois()) == 0:
             time.sleep(1)
         logger.warning('Found the cell.')
-        user_selected_region = self.find_closest()
+        is_refined, user_selected_region = self.parse_user_input(self.retrieve_rois()[0], 0)
+        if is_refined:
+            self.delete_roi(0)
+
         if self.was_done(user_selected_region.centroid):
             choice = user_cmd('(C)ontinue or (E)xit?', 'ce')
             if choice == 'e':
@@ -164,7 +172,7 @@ class IJPort:
 
         auto_rois: Set[str] = set()
         user_inputs: Dict[int, Tuple[str, Region]] = dict()
-        auto_rois.add(self.add_roi(0, past_regions[0].cell_mask))
+        auto_rois.add(self.add_roi(0, user_selected_region.cell_mask))
         # TRACKING STARTS
         while True:
             for i_frame in range(len(past_regions), self.total_frames):
@@ -199,15 +207,15 @@ class IJPort:
             elif choice == 's':
                 break
             # to continue, check if user has some inputs
-            new_inputs = self.check_user_input(user_inputs, auto_rois)
-            if len(new_inputs) == 0:
+            first_user_input = self.check_user_input(user_inputs, auto_rois)
+            if first_user_input == 10000:
                 # if user has no input, set the pointer to the next step
                 if len(past_regions) == self.total_frames:
                     break
                 continue
             # user has new inputs. read some and set the pointer to the first user input
             # set the pointer to the step after the first user input
-            past_regions = past_regions[:min(ni[0] for ni in new_inputs)]
+            past_regions = past_regions[:first_user_input+1]
             # delete the frames after the pointer but keep user's inputs
             self.delete_auto(auto_rois, len(past_regions))
             self.roi_manager.runCommand('Sort')
@@ -282,7 +290,7 @@ class IJPort:
                 break
 
     @staticmethod
-    def read_roi(roi):
+    def read_roi(roi) -> Tuple[np.ndarray, np.ndarray, str]:
         center = np.array([roi.getBounds().getCenterX(), roi.getBounds().getCenterY()])
         if roi.getTypeAsString() != 'Polygon':
             xs, ys = list(map(float, roi.getPolygon().xpoints)), list(map(float, roi.getPolygon().ypoints))
@@ -292,24 +300,29 @@ class IJPort:
             xs += roi.getXBase()
             ys += roi.getYBase()
         coordinates = np.array([xs, ys]).T
-        return coordinates, center
+        return coordinates, center, roi.getTypeAsString()
 
-    def find_closest(self) -> Region:
-        polygon_coo, input_center = self.read_roi(self.retrieve_rois()[0])
-        self.delete_roi(0)
-        region = Region.from_roi(polygon_coo, self.smoothed(0))
-        lower = region.intensity.min() * (1 - self.config.intensity_variation)
-        upper = region.intensity.max() * (1 + self.config.intensity_variation)
-        blobs = self.find_blobs(self.smoothed(0), lower, upper, frame=0)
-        # self.plot(0, blobs)
-        min_distance, min_label = float('inf'), -1
-        for label in blobs.regions:
-            distance = np.sqrt(np.sum((blobs[label].centroid - input_center) ** 2))
-            if distance < min_distance:
-                min_distance = distance
-                min_label = label
-        region = blobs[min_label]
-        return region
+    def parse_user_input(self, roi, frame_idx) -> Tuple[bool, Region]:
+        """
+        :param roi: ROI of user input
+        :param frame_idx: Frame index
+        :return: Return 2 items. The first is a bool flag, set True if the input is refined. The second is the region.
+        """
+        polygon_coo, input_center, roi_type = self.read_roi(roi)
+        region = Region.from_roi(polygon_coo, self.smoothed(frame_idx))
+        if roi_type != 'Polygon':
+            # self.delete_roi(roi_index)
+            lower = region.intensity.min() * (1 - self.config.intensity_variation)
+            upper = region.intensity.max() * (1 + self.config.intensity_variation)
+            blobs = self.find_blobs(self.smoothed(0), lower, upper, frame=frame_idx)
+            assert len(blobs) > 0, "Cannot find any regions around user input."
+            # self.plot(0, blobs)
+            closest_region = sorted(
+                list(blobs.regions.values()), key=lambda bb: np.sum((bb.centroid - input_center) ** 2)
+            )[0]
+            return True, closest_region
+        else:
+            return False, region
 
     def add_roi(self, frame_idx, cell_mask) -> str:
         self.imp.setT(frame_idx + 1)
@@ -335,13 +348,10 @@ class IJPort:
             self.roi_manager.runCommand('Delete')
             time.sleep(0.2)
 
-    def delete_roi_in_frame(self, frame: int):
-        while True:
-            for idx, roi in enumerate(self.retrieve_rois()):
-                if roi.getTPosition() == frame:
-                    self.delete_roi(idx)
-                    continue
-            break
+    def roi_by_frame(self, frame: int):
+        for idx, roi in enumerate(self.retrieve_rois()):
+            if int(roi.getName()[:4]) - 1 == frame:
+                yield idx
 
     def delete_auto(self, auto_rois: Set[str], after=None):
         to_delete = list()
