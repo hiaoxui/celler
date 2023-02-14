@@ -87,7 +87,6 @@ class IJPort:
             self.cell_name = f'cell_{i:03}'
             if not os.path.exists(self.cell_folder):
                 break
-        os.makedirs(self.cell_folder)
 
     def smoothed(self, frame_idx: int):
         self.start_smooth()
@@ -253,6 +252,8 @@ class IJPort:
         return lower, upper
 
     def save(self, first_region):
+        os.makedirs(os.path.join(self.log_folder, self.cell_name), exist_ok=True)
+
         self.past_cell_centers[self.cell_name] = first_region.centroid
         with open(os.path.join(self.cell_folder, 'meta.json'), 'w') as fp:
             json.dump({
@@ -261,7 +262,6 @@ class IJPort:
                 'time': str(datetime.now())
             }, fp, indent=2)
         self.roi_manager.runCommand('Sort')
-        os.makedirs(os.path.join(self.log_folder, self.cell_name), exist_ok=True)
         self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
         self.roi_manager.save(os.path.join(self.cell_folder, 'RoiSet.zip'))
         self.roi_manager.runCommand('Measure')
