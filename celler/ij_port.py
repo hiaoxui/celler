@@ -59,7 +59,6 @@ class IJPort:
         # shared objects
         self.roi_manager = self.dataset = self.imp = self.ij = None
         self.pixels: Optional[np.ndarray] = None
-        self.cell_name = None
         self._smoothed: Dict[tuple[float, int], np.ndarray] = dict()
         self.queue_started = False
         self.async_smooth = False
@@ -81,12 +80,6 @@ class IJPort:
             return
         self.queue_started = True
         smooth_img(self.pixels, self.config.gaussian_sigma, self.log_folder)
-
-    def find_a_cell_name(self):
-        for i in range(1000):
-            self.cell_name = f'cell_{i:03}'
-            if not os.path.exists(self.cell_folder):
-                break
 
     def smoothed(self, frame_idx: int):
         self.start_smooth()
@@ -156,7 +149,6 @@ class IJPort:
         return len(self.roi_manager.getSelectedIndexes()) == 0
 
     def segment_one_cell(self):
-        self.find_a_cell_name()
         logger.warning("Select your cell.")
         while len(self.retrieve_rois()) == 0:
             time.sleep(1)
@@ -252,20 +244,26 @@ class IJPort:
         return lower, upper
 
     def save(self, first_region):
-        os.makedirs(os.path.join(self.log_folder, self.cell_name), exist_ok=True)
+        cell_name = cell_folder = ''
+        for i in range(1000):
+            cell_name = f'cell_{i:03}'
+            cell_folder = os.path.join(self.log_folder, cell_name)
+            if not os.path.exists(cell_folder):
+                break
+        os.makedirs(os.path.join(self.log_folder, cell_name), exist_ok=True)
 
-        self.past_cell_centers[self.cell_name] = first_region.centroid
-        with open(os.path.join(self.cell_folder, 'meta.json'), 'w') as fp:
+        self.past_cell_centers[cell_name] = first_region.centroid
+        with open(os.path.join(cell_folder, 'meta.json'), 'w') as fp:
             json.dump({
                 'x': float(first_region.centroid[0]), 'y': float(first_region.centroid[1]),
-                'cell_name': self.cell_name, 'timestamp': time.time(),
+                'cell_name': cell_name, 'timestamp': time.time(),
                 'time': str(datetime.now())
             }, fp, indent=2)
         self.roi_manager.runCommand('Sort')
         self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
-        self.roi_manager.save(os.path.join(self.cell_folder, 'RoiSet.zip'))
+        self.roi_manager.save(os.path.join(cell_folder, 'RoiSet.zip'))
         self.roi_manager.runCommand('Measure')
-        self.ij.IJ.saveAs('measurements', os.path.join(self.cell_folder, 'measurements.csv'))
+        self.ij.IJ.saveAs('measurements', os.path.join(cell_folder, 'measurements.csv'))
         self.ij.py.run_macro('run("Clear Results");', {})
 
     def segment(self):
@@ -275,11 +273,9 @@ class IJPort:
         while True:
             # Clean past traces
             self.delete_roi(list(range(len(self.retrieve_rois()))))
-            self.retrieve_rois()
-            self.cell_name = None
             # do a new one
             self.segment_one_cell()
-            logger.warning(f'Done with {self.cell_name}.')
+            logger.warning(f'Done with current cell.')
             time.sleep(0.1)
             choice = user_cmd('(C)ontinue or (E)xit.', 'ce')
             if choice.lower() == 'e':
@@ -338,7 +334,6 @@ class IJPort:
             time.sleep(0.2)
             self.roi_manager.runCommand('Delete')
             time.sleep(0.2)
-        self.retrieve_rois()
 
     def delete_roi_in_frame(self, frame: int):
         while True:
@@ -347,10 +342,6 @@ class IJPort:
                     self.delete_roi(idx)
                     continue
             break
-
-    @property
-    def cell_folder(self):
-        return os.path.join(self.log_folder, self.cell_name)
 
     def delete_auto(self, auto_rois: Set[str], after=None):
         to_delete = list()
