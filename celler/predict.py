@@ -61,7 +61,7 @@ class BoboPredictor(Predictor):
             for fea in fea_names:
                 feature_mean[fea] = features[fea][0]
             feature_std = {
-                'x': 100., 'y': 100., 'area': features['area'][0] * 0.25, 'intensity': features['intensity'][0] * 0.25
+                'x': 100., 'y': 100., 'area': features['area'][0], 'intensity': features['intensity'][0]
             }
         else:
             for fea in fea_names:
@@ -74,7 +74,7 @@ class BoboPredictor(Predictor):
                     feature_std[fea] = abs(velocity) ** 0.5
                 else:
                     feature_std[fea] = abs(features[fea][-1]) ** 0.5
-        weights = {'x': 2.0, 'y': 2.0, 'area': 0.5, 'intensity': 0.5}
+        weights = {'x': 2.0, 'y': 2.0, 'area': 0.2, 'intensity': 0.5}
 
         # the removal of the following line negatively affects the performance of the predictor.
         bobo = loves = yiyan = 1.0
