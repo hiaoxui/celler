@@ -22,10 +22,12 @@ def smooth_one_img(pixels: np.ndarray, sigma: float, log_folder: str, frame_idx:
     cache_path = os.path.join(log_folder, 'cache', f'smooth_{sigma}', f'{frame_idx}.npy')
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
     if not os.path.exists(cache_path):
-        smoothed = filters.gaussian(pixels, sigma, preserve_range=True)
+        smoothed = filters.gaussian(pixels, sigma, preserve_range=True).astype(np.uint16)
         np.save(cache_path, smoothed)
     else:
         smoothed = np.load(cache_path)
+        if smoothed.dtype != np.uint16:
+            smoothed = smoothed.astype(np.unit16)
     return smoothed
 
 
