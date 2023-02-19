@@ -8,7 +8,6 @@ import json
 import imagej
 import numpy as np
 import scyjava as sj
-from skimage import filters
 from imantics import Mask
 from matplotlib import pyplot as plt
 
@@ -55,7 +54,8 @@ class IJPort:
         self.image_file_path = image_file_path
         os.makedirs(os.path.join(self.log_folder, 'cache'), exist_ok=True)
         # self.predictor = SimpleTrackPYPredictor(config)
-        self.predictor = BoboPredictor(config)
+        # self.predictor = BoboPredictor(config)
+        self.predictor = SimpleTrackPYPredictor(config)
         # shared objects
         self.roi_manager = self.dataset = self.imp = self.ij = None
         self.pixels: Optional[np.ndarray] = None
@@ -112,7 +112,7 @@ class IJPort:
             self.init_ij()
         self.start_smooth()
         if blob is None:
-            blob = self.find_blobs(self.smoothed(frame_idx), None, None, frame=frame_idx)
+            blob = self.find_blobs(self.smoothed(frame_idx), None, None, frame=frame_idx, erosion=self.config.erosion)
         fig, ax = plt.subplots(1, 1, figsize=(15, 15))
         img = self.pixels[frame_idx]
         ax.imshow(img)
@@ -126,10 +126,11 @@ class IJPort:
     def total_frames(self) -> int:
         return self.pixels.shape[0]
 
-    def check_user_input(self, user_inputs: Dict[int, Tuple[str, Region]], auto_rois: Set[str]) -> int:
-        first_user_input_frame = 10000
-        to_delete = list()
-        to_add = list()
+    def check_user_input(
+            self, user_inputs: Dict[int, Tuple[str, Region]], auto_rois: Set[str], past_regions: List[Region]
+    ) -> bool:
+        to_add, to_delete = list(), list()
+        delete_after = 99999
         for roi_idx, roi in enumerate(self.retrieve_rois()):
             if roi.getName() in auto_rois:
                 continue
@@ -137,18 +138,28 @@ class IJPort:
             if frame in user_inputs and roi.getName() == user_inputs[frame][0]:
                 # It has been recorded
                 continue
-            first_user_input_frame = min(first_user_input_frame, frame)
+            # New input
+            while len(past_regions) > frame:
+                past_regions.pop(-1)
+            delete_after = min(delete_after, frame)
             is_refined, region = self.parse_user_input(roi, frame)
-            if not is_refined:
-                user_inputs[frame] = (roi.getName(), region)
-            else:
-                to_delete.extend(self.roi_by_frame(frame))
+            if is_refined:
+                past_regions.append(region)
+                to_delete.append(roi_idx)
                 to_add.append([frame, region.cell_mask])
+            else:
+                user_inputs[frame] = (roi.getName(), region)
+
+        if delete_after == 99999:
+            return False
 
         self.delete_roi(to_delete)
+        new_auto = list()
         for frame, cm in to_add:
-            auto_rois.add(self.add_roi(frame, cm))
-        return first_user_input_frame
+            new_auto.append(self.add_roi(frame, cm))
+        self.delete_auto(auto_rois, delete_after)
+        auto_rois |= set(new_auto)
+        return True
 
     def is_interrupted(self):
         return len(self.roi_manager.getSelectedIndexes()) == 0
@@ -207,17 +218,13 @@ class IJPort:
             elif choice == 's':
                 break
             # to continue, check if user has some inputs
-            first_user_input = self.check_user_input(user_inputs, auto_rois)
-            if first_user_input == 10000:
+            input_exist = self.check_user_input(user_inputs, auto_rois, past_regions)
+            if not input_exist:
                 # if user has no input, set the pointer to the next step
                 if len(past_regions) == self.total_frames:
                     break
                 continue
-            # user has new inputs. read some and set the pointer to the first user input
-            # set the pointer to the step after the first user input
-            past_regions = past_regions[:first_user_input+1]
             # delete the frames after the pointer but keep user's inputs
-            self.delete_auto(auto_rois, len(past_regions))
             self.roi_manager.runCommand('Sort')
             self.roi_manager.select(len(self.retrieve_rois())-1)
         self.save(past_regions[0])
@@ -235,7 +242,7 @@ class IJPort:
             weights.append(np.exp(-i/10))
             lowers.append(np.min(pr.intensity))
             uppers.append(np.max(pr.intensity))
-            means.append(pr.top50mean())
+            means.append(pr.top_mean())
         weights, lowers, uppers, means = map(np.array, [weights, lowers, uppers, means])
         strategy = 'mean'
         if strategy == 'std':
@@ -247,8 +254,7 @@ class IJPort:
             upper += upper_std
         else:
             mean_mean = (weights * means).sum() / weights.sum()
-            lower = mean_mean * (1 - self.config.intensity_variation)
-            upper = mean_mean * (1 + self.config.intensity_variation)
+            lower, upper = mean_mean * np.array([self.config.lower_intensity, self.config.upper_intensity])
         return lower, upper
 
     def save(self, first_region):
@@ -312,9 +318,8 @@ class IJPort:
         region = Region.from_roi(polygon_coo, self.smoothed(frame_idx))
         if roi_type != 'Polygon':
             # self.delete_roi(roi_index)
-            lower = region.intensity.min() * (1 - self.config.intensity_variation)
-            upper = region.intensity.max() * (1 + self.config.intensity_variation)
-            blobs = self.find_blobs(self.smoothed(0), lower, upper, frame=frame_idx)
+            lower, upper = region.top_mean() * self.config.lower_intensity, region.top_mean() * self.config.upper_intensity
+            blobs = self.find_blobs(self.smoothed(frame_idx), lower, upper, around=region.centroid, frame=frame_idx)
             assert len(blobs) > 0, "Cannot find any regions around user input."
             # self.plot(0, blobs)
             closest_region = sorted(
@@ -356,9 +361,11 @@ class IJPort:
     def delete_auto(self, auto_rois: Set[str], after=None):
         to_delete = list()
         for idx, roi in enumerate(self.retrieve_rois()):
-            frame = int(roi.getName()[:4]) - 1
+            roi_name = roi.getName()
+            frame = int(roi_name[:4]) - 1
             if after is not None and frame < after:
                 continue
-            if roi.getName() in auto_rois:
+            if roi_name in auto_rois:
                 to_delete.append(idx)
+                auto_rois.remove(roi_name)
         self.delete_roi(to_delete)

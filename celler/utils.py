@@ -1,4 +1,5 @@
 import logging
+from typing import *
 from dataclasses import dataclass
 
 
@@ -14,14 +15,18 @@ def get_logger():
 @dataclass()
 class Config:
     # for blob finding
-    gaussian_sigma: float
-    min_size: int
-    max_size: int
+    gaussian_sigma: float = 10.0
+    min_size: int = 20 ** 2
+    max_size: Optional[int] = None
+    max_hole: Optional[int] = 40**2
     # for tracking
-    search_range: float
+    search_range: float = 500.
     # others
     threshold_adjustment: float = -1.5
-    intensity_variation: float = 0.5
+
+    lower_intensity: float = 0.5
+    upper_intensity: float = 1.5
+    erosion: int = 5
     debug: bool = False
 
 

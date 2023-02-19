@@ -44,7 +44,7 @@ class BoboPredictor(Predictor):
         elif feature_name == 'area':
             return region.area
         elif feature_name == 'intensity':
-            return region.top50mean()
+            return region.top_mean()
         else:
             raise NotImplementedError
 
