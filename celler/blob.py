@@ -82,7 +82,7 @@ class Region:
 
     @property
     def cell_mask(self):
-        cm = np.zeros(self.canvas, dtype=np.bool)
+        cm = np.zeros(self.canvas, dtype=bool)
         slices = [slice(self.offsets[axis], self.offsets[axis] + self.crop_cell_mask.shape[axis]) for axis in [0, 1]]
         cm[slices[0], slices[1]] = self.crop_cell_mask
         return cm
