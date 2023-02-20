@@ -211,6 +211,7 @@ class IJPort:
                     break
                 past_regions.append(region_next_step)
                 auto_rois.add(self.add_roi(i_frame, region_next_step.cell_mask))
+                self.roi_manager.runCommand('Sort')
             choice = user_cmd('(C)ontinue, (S)ave, or (D)iscard.', 'csd')
             if choice == 'd':
                 self.delete_roi(list(range(len(self.retrieve_rois()))))
@@ -275,7 +276,7 @@ class IJPort:
             }, fp, indent=2)
         self.roi_manager.runCommand('Sort')
         self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
-        self.roi_manager.save(os.path.join(cell_folder, 'RoiSet.zip'))
+        self.roi_manager.save(os.path.join(cell_folder, f'{cell_name}_RoiSet.zip'))
         self.roi_manager.runCommand('Measure')
         self.ij.IJ.saveAs('measurements', os.path.join(cell_folder, 'measurements.csv'))
         self.ij.py.run_macro('run("Clear Results");', {})
