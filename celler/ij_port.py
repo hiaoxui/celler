@@ -42,7 +42,7 @@ class IJPort:
         ij.ui().show(self.imp)
         self.roi_manager = ij.RoiManager.getRoiManager()
         ij.RoiManager()
-        sj.jimport('ij.plugin.filter.Analyzer').setMeasurements(12582911)
+        sj.jimport('ij.plugin.filter.Analyzer').setMeasurements(2092799)
         logger.info(f'Done with loading.')
 
     def __init__(self, image_file_path: str, config: Config):
@@ -194,7 +194,7 @@ class IJPort:
                 lower_threshold, upper_threshold = self.guess_threshold(past_regions)
                 regions = self.find_blobs(
                     self.smoothed(i_frame), lower_threshold, upper_threshold,
-                    (past_regions[-1].centroid[1], past_regions[-1].centroid[0]) if len(past_regions) > 0 else None,
+                    past_regions[-1].centroid if len(past_regions) > 0 else None,
                     frame=i_frame,
                 )
                 if len(regions) == 0:
@@ -211,7 +211,8 @@ class IJPort:
                     break
                 past_regions.append(region_next_step)
                 auto_rois.add(self.add_roi(i_frame, region_next_step.cell_mask))
-                self.roi_manager.runCommand('Sort')
+            self.roi_manager.runCommand('Sort')
+            self.roi_manager.select(len(self.retrieve_rois()) - 1)
             choice = user_cmd('(C)ontinue, (S)ave, or (D)iscard.', 'csd')
             if choice == 'd':
                 self.delete_roi(list(range(len(self.retrieve_rois()))))
@@ -276,9 +277,9 @@ class IJPort:
             }, fp, indent=2)
         self.roi_manager.runCommand('Sort')
         self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
-        self.roi_manager.save(os.path.join(cell_folder, f'{cell_name}_RoiSet.zip'))
+        self.roi_manager.save(os.path.join(cell_folder, f'RoiSet.zip'))
         self.roi_manager.runCommand('Measure')
-        self.ij.IJ.saveAs('measurements', os.path.join(cell_folder, 'measurements.csv'))
+        self.ij.IJ.saveAs('measurements', os.path.join(cell_folder, f'{cell_name}_measurements.csv'))
         self.ij.py.run_macro('run("Clear Results");', {})
 
     def segment(self):
@@ -298,7 +299,7 @@ class IJPort:
 
     @staticmethod
     def read_roi(roi) -> Tuple[np.ndarray, np.ndarray, str]:
-        center = np.array([roi.getBounds().getCenterX(), roi.getBounds().getCenterY()])
+        center = np.array([roi.getBounds().getCenterY(), roi.getBounds().getCenterX()])
         if roi.getTypeAsString() != 'Polygon':
             xs, ys = list(map(float, roi.getPolygon().xpoints)), list(map(float, roi.getPolygon().ypoints))
         else:
@@ -306,7 +307,7 @@ class IJPort:
             xs, ys = np.array(roi.getXCoordinates()[:n], dtype=float), np.array(roi.getYCoordinates()[:n], dtype=float)
             xs += roi.getXBase()
             ys += roi.getYBase()
-        coordinates = np.array([xs, ys]).T
+        coordinates = np.array([ys, xs]).T
         return coordinates, center, roi.getTypeAsString()
 
     def parse_user_input(self, roi, frame_idx) -> Tuple[bool, Region]:

@@ -59,8 +59,8 @@ class Region:
         coordinates = coordinates.astype(np.int16)
         # polygon_mask = Polygons(coordinates.T.tolist()).mask(*image_smoothed.shape).array.astype(np.int16)
         polygon_mask = Polygons(coordinates.tolist()).mask(
-            image_smoothed.shape[1], image_smoothed.shape[0]
-        ).array.astype(np.int16)
+            image_smoothed.shape[0], image_smoothed.shape[1]
+        ).array.astype(np.int16).T
         rp = measure.regionprops(polygon_mask)
         assert len(rp) == 1
         region = Region.from_rp(rp[0], polygon_mask, None, image_smoothed)
@@ -72,7 +72,7 @@ class Region:
         cell_mask = (label_mask == rp.label)
         crop, offsets = Region.crop_image(cell_mask)
         region = Region(
-            rp.label, np.array([rp.centroid[1], rp.centroid[0]]), rp.area, rp.eccentricity,
+            rp.label, np.array([rp.centroid[0], rp.centroid[1]]), rp.area, rp.eccentricity,
             offsets, tuple(cell_mask.shape), crop
         )
         if hole_mask is not None:

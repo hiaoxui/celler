@@ -4,9 +4,12 @@ from collections import defaultdict
 import trackpy
 import numpy as np
 import pandas as pd
+from trackpy.linking.linking import logger as trackpy_logger
 
 from .blob import Blob, Region
 from .utils import Config, logger
+
+trackpy_logger.setLevel('WARNING')
 
 
 class Predictor:
