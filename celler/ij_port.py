@@ -192,7 +192,7 @@ class IJPort:
                     past_regions.append(user_inputs[i_frame][1])
                     # do not redo the frames with user inputs
                     continue
-                lower_threshold, upper_threshold = self.guess_threshold(past_regions)
+                lower_threshold, upper_threshold = self.guess_threshold(past_regions, True)
                 regions = self.find_blobs(
                     self.smoothed(i_frame), lower_threshold, upper_threshold,
                     past_regions[-1].centroid if len(past_regions) > 0 else None,
