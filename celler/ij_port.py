@@ -183,7 +183,8 @@ class IJPort:
 
         auto_rois: Set[str] = set()
         user_inputs: Dict[int, Tuple[str, Region]] = dict()
-        auto_rois.add(self.add_roi(0, user_selected_region.cell_mask))
+        if is_refined:
+            auto_rois.add(self.add_roi(0, user_selected_region.cell_mask))
         # TRACKING STARTS
         while True:
             for i_frame in range(len(past_regions), self.total_frames):
