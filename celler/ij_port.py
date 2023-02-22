@@ -112,7 +112,9 @@ class IJPort:
             self.init_ij()
         self.start_smooth()
         if blob is None:
-            blob = self.find_blobs(self.smoothed(frame_idx), None, None, frame=frame_idx, erosion=self.config.erosion)
+            blob = self.find_blobs(
+                self.smoothed(frame_idx), None, None, frame=frame_idx, erosion=self.config.erosion
+            )
         fig, ax = plt.subplots(1, 1, figsize=(15, 15))
         img = self.pixels[frame_idx]
         ax.imshow(img)
@@ -322,7 +324,10 @@ class IJPort:
         if roi_type != 'Polygon':
             # self.delete_roi(roi_index)
             lower, upper = region.top_mean() * self.config.lower_intensity, region.top_mean() * self.config.upper_intensity
-            blobs = self.find_blobs(self.smoothed(frame_idx), lower, upper, around=region.centroid, frame=frame_idx)
+            blobs = self.find_blobs(
+                self.smoothed(frame_idx), lower, upper, around=region.centroid, frame=frame_idx,
+                erosion=self.config.erosion
+            )
             assert len(blobs) > 0, "Cannot find any regions around user input."
             # self.plot(0, blobs)
             closest_region = sorted(
