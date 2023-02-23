@@ -271,11 +271,3 @@ class ROIFile:
             frame = ROIReader(bites).parse()
             files[fn.filename] = frame
             ROIWriter(frame).sanity_check(bites)
-
-
-def test():
-    rf = ROIFile('/home/hiaoxui/images/Ax2 mry-C2B-iai_AcquisitionBlock3.czi/RoiSet.zip')
-
-
-if __name__ == '__main__':
-    test()

@@ -24,7 +24,7 @@ class Region:
     def top_mean(self):
         return float(self.intensity[self.intensity > np.quantile(self.intensity, 0.6)].mean())
 
-    def erosion(self, radius, max_hole=None, small_size=None):
+    def dilation(self, radius, max_hole=None, small_size=None):
         if radius == 0:
             return
         pad_widths = []
@@ -102,7 +102,7 @@ class Region:
 
 
 class Blob:
-    def __init__(self, label_mask, image, hole_mask, frame=None, erosion: int = 0):
+    def __init__(self, label_mask, image, hole_mask, frame=None, dilation: int = 0):
         self.label_mask = label_mask
         self.frame: Optional[int] = frame
         self.regions: Dict[int, Region] = {
@@ -111,7 +111,7 @@ class Blob:
         }
         to_remove = list()
         for r in self.regions.values():
-            r.erosion(erosion, cfg.max_hole, cfg.min_size)
+            r.dilation(dilation, cfg.max_hole, cfg.min_size)
             if not r.crop_cell_mask.any():
                 to_remove.append(r.label)
             else:
@@ -171,13 +171,13 @@ class BlobFinder:
     def __call__(
             self, img: np.ndarray, lower: Optional[float], upper: Optional[float],
             around: Optional[Tuple[int, int]] = None, frame: int = None,
-            erosion: int = 0
+            dilation: int = 0
     ) -> Blob:
         upper_add = None
         if upper is not None and False:
-            upper_regions = self(img, upper, None, around, erosion=10)
+            upper_regions = self(img, upper, None, around, dilation=10)
             upper_add = ~sum([ur.cell_mask for ur in list(upper_regions)], np.zeros(img.shape, bool))
         cell_mask, hole_mask = self.gen_mask(img, lower, upper, around, upper_add)
         label_mask = measure.label(cell_mask)
-        regions = Blob(label_mask, img, hole_mask, frame, erosion)
+        regions = Blob(label_mask, img, hole_mask, frame, dilation)
         return regions

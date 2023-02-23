@@ -112,7 +112,7 @@ class IJPort:
         self.start_smooth()
         if blob is None:
             blob = self.find_blobs(
-                self.smoothed(frame_idx), None, None, frame=frame_idx, erosion=cfg.erosion
+                self.smoothed(frame_idx), None, None, frame=frame_idx, dilation=cfg.dilation
             )
         fig, ax = plt.subplots(1, 1, figsize=(15, 15))
         img = self.pixels[frame_idx]
@@ -325,7 +325,7 @@ class IJPort:
             lower, upper = region.top_mean() * cfg.lower_intensity, region.top_mean() * cfg.upper_intensity
             blobs = self.find_blobs(
                 self.smoothed(frame_idx), lower, upper, around=region.centroid, frame=frame_idx,
-                erosion=cfg.erosion
+                dilation=cfg.dilation
             )
             assert len(blobs) > 0, "Cannot find any regions around user input."
             # self.plot(0, blobs)

@@ -26,7 +26,7 @@ class Config:
 
     lower_intensity: float = 0.5
     upper_intensity: float = 1.5
-    erosion: int = 3
+    dilation: int = 3
     debug: bool = False
 
 
