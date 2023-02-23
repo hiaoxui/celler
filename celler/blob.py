@@ -177,7 +177,7 @@ class BlobFinder:
             dilation: int = 0
     ) -> Blob:
         upper_add = None
-        if upper is not None and False:
+        if upper is not None:
             upper_regions = self(img, upper, None, around, dilation=10)
             upper_add = ~sum([ur.cell_mask for ur in list(upper_regions)], np.zeros(img.shape, bool))
         cell_mask = self.gen_mask(img, lower, upper, around, upper_add)
