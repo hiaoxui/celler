@@ -16,7 +16,7 @@ def get_logger():
 class Config:
     # for blob finding
     gaussian_sigma: float = 1.0
-    min_size: int = 30 ** 2
+    min_size: int = 20 ** 2
     max_size: Optional[int] = None
     max_hole: Optional[int] = 40**2
     # for tracking

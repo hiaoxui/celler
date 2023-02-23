@@ -17,6 +17,20 @@ from .predict import SimpleTrackPYPredictor, BoboPredictor
 from .smooth import smooth_img, smooth_queue, smooth_one_img
 
 
+def save_mask(mask):
+    mask = mask.astype(int)
+    def bound(idx):
+        trues = np.arange(mask.shape[1-idx])[(mask != 0).any(idx)]
+        margin = 10
+        return trues[0]-margin, trues[-1]+margin
+    b1 = bound(0)
+    b0 = bound(1)
+    mask = mask[b0[0]:b0[1], b1[0]:b1[1]]
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    ax.imshow(mask)
+    fig.savefig('/home/hiaoxui/mask.pdf')
+
+
 class IJPort:
     def init_ij(self):
         if self.ij is not None:
