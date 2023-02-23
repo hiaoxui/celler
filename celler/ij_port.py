@@ -11,7 +11,7 @@ import scyjava as sj
 from imantics import Mask
 from matplotlib import pyplot as plt
 
-from .utils import logger, Config, user_cmd
+from .utils import logger, cfg, user_cmd
 from .blob import Region, BlobFinder
 from .predict import SimpleTrackPYPredictor, BoboPredictor
 from .smooth import smooth_img, smooth_queue, smooth_one_img
@@ -45,9 +45,8 @@ class IJPort:
         sj.jimport('ij.plugin.filter.Analyzer').setMeasurements(2092799)
         logger.info(f'Done with loading.')
 
-    def __init__(self, image_file_path: str, config: Config):
-        self.config = config
-        self.find_blobs = BlobFinder(config)
+    def __init__(self, image_file_path: str):
+        self.find_blobs = BlobFinder()
         # paths
         self.log_folder = image_file_path + '_logs'
         self._np_data_path = os.path.join(self.log_folder, 'cache', 'pixels.npy')
@@ -55,7 +54,7 @@ class IJPort:
         os.makedirs(os.path.join(self.log_folder, 'cache'), exist_ok=True)
         # self.predictor = SimpleTrackPYPredictor(config)
         # self.predictor = BoboPredictor(config)
-        self.predictor = SimpleTrackPYPredictor(config)
+        self.predictor = SimpleTrackPYPredictor()
         # shared objects
         self.roi_manager = self.dataset = self.imp = self.ij = None
         self.pixels: Optional[np.ndarray] = None
@@ -79,19 +78,19 @@ class IJPort:
         if self.queue_started or not self.async_smooth:
             return
         self.queue_started = True
-        smooth_img(self.pixels, self.config.gaussian_sigma, self.log_folder)
+        smooth_img(self.pixels, cfg.gaussian_sigma, self.log_folder)
 
     def smoothed(self, frame_idx: int):
         self.start_smooth()
-        while (self.config.gaussian_sigma, frame_idx) not in self._smoothed:
+        while (cfg.gaussian_sigma, frame_idx) not in self._smoothed:
             if self.async_smooth:
                 triple = smooth_queue.get()
                 self._smoothed[(triple[0], triple[1])] = triple[2]
             else:
-                self._smoothed[(self.config.gaussian_sigma, frame_idx)] = smooth_one_img(
-                    self.pixels[frame_idx], self.config.gaussian_sigma, self.log_folder, frame_idx
+                self._smoothed[(cfg.gaussian_sigma, frame_idx)] = smooth_one_img(
+                    self.pixels[frame_idx], cfg.gaussian_sigma, self.log_folder, frame_idx
                 )
-        return self._smoothed[(self.config.gaussian_sigma, frame_idx)]
+        return self._smoothed[(cfg.gaussian_sigma, frame_idx)]
 
     def was_done(self, center: np.ndarray, affinity=100.):
         for cell_name, ctr in self.past_cell_centers.items():
@@ -113,7 +112,7 @@ class IJPort:
         self.start_smooth()
         if blob is None:
             blob = self.find_blobs(
-                self.smoothed(frame_idx), None, None, frame=frame_idx, erosion=self.config.erosion
+                self.smoothed(frame_idx), None, None, frame=frame_idx, erosion=cfg.erosion
             )
         fig, ax = plt.subplots(1, 1, figsize=(15, 15))
         img = self.pixels[frame_idx]
@@ -204,7 +203,7 @@ class IJPort:
                     logger.warning('Found 0 regions nearby. The cell might be lost.')
                     break
                 region_next_step = self.predictor.predict(past_regions, regions)
-                if self.config.debug:
+                if cfg.debug:
                     self.plot(i_frame, regions)
                     print('Label:', region_next_step.label)
                 if region_next_step is None:
@@ -259,7 +258,7 @@ class IJPort:
             upper += upper_std
         else:
             mean_mean = (weights * means).sum() / weights.sum()
-            lower, upper = mean_mean * np.array([self.config.lower_intensity, self.config.upper_intensity])
+            lower, upper = mean_mean * np.array([cfg.lower_intensity, cfg.upper_intensity])
         return lower, upper
 
     def save(self, first_region):
@@ -323,10 +322,10 @@ class IJPort:
         region = Region.from_roi(polygon_coo, self.smoothed(frame_idx))
         if roi_type != 'Polygon':
             # self.delete_roi(roi_index)
-            lower, upper = region.top_mean() * self.config.lower_intensity, region.top_mean() * self.config.upper_intensity
+            lower, upper = region.top_mean() * cfg.lower_intensity, region.top_mean() * cfg.upper_intensity
             blobs = self.find_blobs(
                 self.smoothed(frame_idx), lower, upper, around=region.centroid, frame=frame_idx,
-                erosion=self.config.erosion
+                erosion=cfg.erosion
             )
             assert len(blobs) > 0, "Cannot find any regions around user input."
             # self.plot(0, blobs)

@@ -1,7 +1,7 @@
 from argparse import ArgumentParser
 
 from celler.ij_port import IJPort
-from celler.utils import logger, Config
+from celler.utils import logger, cfg
 
 
 def main():
@@ -16,10 +16,10 @@ def main():
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
     logger.setLevel('INFO')
-    config = Config(debug=args.debug)
+    cfg.debug = args.debug
     logger.setLevel('DEBUG' if args.debug else 'WARNING')
 
-    port = IJPort(args.i, config)
+    port = IJPort(args.i)
     if args.action == 'plot':
         port.plot()
     else:
