@@ -92,7 +92,7 @@ class Region:
         bright_mask = (cropped_img > threshold) & enlarged_hull_mask
         # bright_exclude_mask = bright_mask & (~self.crop_cell_mask)
         bright_mask = morphology.remove_small_holes(bright_mask, cfg.max_hole, connectivity=2)
-        bright_mask = morphology.binary_closing(bright_mask, morphology.disk(5))
+        bright_mask = morphology.binary_closing(bright_mask, morphology.disk(1))
         bright_mask = morphology.remove_small_holes(bright_mask, cfg.max_hole, connectivity=2)
         bright_mask = morphology.remove_small_objects(bright_mask, cfg.min_size, connectivity=2)
         self.crop_cell_mask = bright_mask
