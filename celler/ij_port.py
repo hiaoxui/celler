@@ -76,6 +76,10 @@ class IJPort:
         self.queue_started = False
         self.async_smooth = False
         self.past_cell_centers = dict()
+        self.global_meta = dict()
+        global_meta_path = os.path.join(self.log_folder, 'meta.json')
+        if os.path.exists(global_meta_path):
+            self.global_meta = json.load(open(global_meta_path))
 
     def read_past_cells(self):
         for folder in os.listdir(self.log_folder):
@@ -286,11 +290,13 @@ class IJPort:
 
         self.past_cell_centers[cell_name] = first_region.centroid
         with open(os.path.join(cell_folder, 'meta.json'), 'w') as fp:
-            json.dump({
+            meta = {
                 'x': float(first_region.centroid[0]), 'y': float(first_region.centroid[1]),
                 'cell_name': cell_name, 'timestamp': time.time(),
                 'time': str(datetime.now())
-            }, fp, indent=2)
+            }
+            meta.update(self.global_meta)
+            json.dump(meta, fp, indent=2)
         self.roi_manager.runCommand('Sort')
         self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
         self.roi_manager.save(os.path.join(cell_folder, f'RoiSet.zip'))

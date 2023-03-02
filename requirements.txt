@@ -9,3 +9,5 @@ pandas
 imageio
 scyjava
 imantics
+python-bioformats
+python-javabridge
