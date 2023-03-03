@@ -24,8 +24,10 @@ def read_param(czi_path):
     o = bf.OMEXML(md)
     pixel_size = o.image(0).Pixels.get_PhysicalSizeY()
     pixel_unit = o.image(0).Pixels.get_PhysicalSizeYUnit()
-    time_delta = o.image(1).Pixels.Plane(0).get_DeltaT()
+    # time_delta = o.image(1).Pixels.Plane(0).get_DeltaT()
     n_frames = o.image(0).Pixels.get_SizeT()
+    n_channel = o.image(0).Pixels.plane_count // n_frames
+    time_delta = o.image(0).Pixels.plane(n_channel).get_DeltaT() - o.image(0).Pixels.plane(0).get_DeltaT()
     time_deltas = [time_delta] * n_frames
     return {'pixel_size': pixel_size, 'pixel_unit': pixel_unit, 'time_deltas': time_deltas, 'n_frames': n_frames}
 
