@@ -18,7 +18,7 @@ def run():
         if not f.endswith('.csv'):
             continue
         df = pd.read_csv(os.path.join(args.i, f))
-        tgt_folder = os.path.join(args.o, f'{cell_order:03}')
+        tgt_folder = os.path.join(args.o, f'cell_{cell_order:03}')
         os.makedirs(tgt_folder, exist_ok=True)
         shutil.copy(os.path.join(args.i, f), os.path.join(tgt_folder, f'cell_{cell_order:03}_measurements.csv'))
         shutil.copy(os.path.join(args.i, f[:-4]+'.zip'), os.path.join(tgt_folder, 'RoiSet.zip'))
