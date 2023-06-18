@@ -2,9 +2,13 @@ from argparse import ArgumentParser
 import re
 import json
 import os
+import pandas as pd
 
-import bioformats as bf
-import javabridge as jvb
+try:
+    import bioformats as bf
+    import javabridge as jvb
+except ImportError:
+    pass
 
 
 def get_czi(czi_root):
@@ -32,12 +36,7 @@ def read_param(czi_path):
     return {'pixel_size': pixel_size, 'pixel_unit': pixel_unit, 'time_deltas': time_deltas, 'n_frames': n_frames}
 
 
-def main():
-    parser = ArgumentParser()
-    parser.add_argument('--czi', type=str, required=True)
-    parser.add_argument('--log', type=str, required=True)
-    args = parser.parse_args()
-
+def read_from_czi(args):
     czis = get_czi(args.czi)
 
     jvb.start_vm(class_path=bf.JARS, max_heap_size='8G')
@@ -62,6 +61,39 @@ def main():
             cell_meta.update(meta)
             with open(meta_path, 'w') as fp:
                 json.dump(cell_meta, fp, indent=2)
+
+
+def read_from_cli(args):
+    assert args.pixel_size is not None and args.time_interval is not None
+    for root, _, fns in os.walk(args.log):
+        if 'meta.json' not in fns:
+            continue
+        csv_file = [fn for fn in fns if fn.endswith('.csv')][0]
+        df = pd.read_csv(os.path.join(root, csv_file))
+        n_frame = len(df)
+        meta = json.load(open(os.path.join(root, 'meta.json')))
+        meta['pixel_size'] = args.pixel_size
+        meta['time_deltas'] = [args.time_interval] * n_frame
+        meta['pixel_size_unit'] = 'µm'
+        meta['segments'] = [n_frame]
+        meta['czi_path'] = f'cli://{args.pixel_size}:{args.time_interval}'
+        with open(os.path.join(root, 'meta.json'), 'w') as fp:
+            json.dump(meta, fp, indent=2)
+
+
+def main():
+    parser = ArgumentParser()
+    parser.add_argument('--log', type=str, required=True)
+    # either input a CZI file, if metadata should be read from CZI
+    parser.add_argument('--czi', type=str)
+    # or manually pass them via cli
+    parser.add_argument('--pixel-size', type=float)
+    parser.add_argument('--time-interval', type=float)
+    args = parser.parse_args()
+    if args.czi is not None:
+        read_from_czi(args)
+    else:
+        read_from_cli(args)
 
 
 if __name__ == '__main__':
