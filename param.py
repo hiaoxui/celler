@@ -66,12 +66,15 @@ def read_from_czi(args):
 def read_from_cli(args):
     assert args.pixel_size is not None and args.time_interval is not None
     for root, _, fns in os.walk(args.log):
-        if 'meta.json' not in fns:
+        if not any(re.findall(r'cell_\d+_measurements.csv', fn) for fn in fns):
             continue
         csv_file = [fn for fn in fns if fn.endswith('.csv')][0]
         df = pd.read_csv(os.path.join(root, csv_file))
         n_frame = len(df)
-        meta = json.load(open(os.path.join(root, 'meta.json')))
+        if 'meta.json' in fns:
+            meta = json.load(open(os.path.join(root, 'meta.json')))
+        else:
+            meta = {'cell_name': os.path.basename(root)}
         meta['pixel_size'] = args.pixel_size
         meta['time_deltas'] = [args.time_interval] * n_frame
         meta['pixel_size_unit'] = 'µm'
