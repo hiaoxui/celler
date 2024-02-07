@@ -187,7 +187,7 @@ class IJPort:
         logger.warning("Select your cell.")
         while len(self.retrieve_rois()) == 0:
             time.sleep(1)
-        logger.warning('Found the cell.')
+        logger.warning('Detected user input.')
         is_refined, user_selected_region = self.parse_user_input(self.retrieve_rois()[0], 0)
         if is_refined:
             self.delete_roi(0)

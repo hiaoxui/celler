@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from skimage import filters, morphology, measure
-from skimage.filters import threshold_otsu
+from skimage.filters import threshold_otsu, try_all_threshold, threshold_triangle
 from imantics import Polygons, Mask
 
 from .utils import cfg
@@ -138,13 +138,12 @@ class Blob:
 
 class BlobFinder:
     def gen_mask(self, img, lower, upper, around, addition_mask=None):
-        otsu_threshold = threshold_otsu(img) + cfg.threshold_adjustment * img.std()
-        if lower is None:
-            lower = otsu_threshold
-        else:
-            lower = max(otsu_threshold, lower)
-        if upper is None:
-            upper = float('inf')
+        auto_threshold = threshold_triangle(img)
+        # fig, ax = try_all_threshold(img, figsize=(20, 20), verbose=True)
+        # fig.savefig('/home/hiaoxui/celler_debug/thresholds.pdf')
+        # exit()
+        lower = max(auto_threshold, lower if lower is not None else 0)
+        upper = upper or float('inf')
         cell_mask = (img < upper) & (img > lower)
         if addition_mask is not None:
             cell_mask &= addition_mask
@@ -178,6 +177,7 @@ class BlobFinder:
     ) -> Blob:
         upper_add = None
         if upper is not None:
+            # if upper is not None, exclude it.
             upper_regions = self(img, upper, None, around, dilation=10)
             upper_add = ~sum([ur.cell_mask for ur in list(upper_regions)], np.zeros(img.shape, bool))
         cell_mask = self.gen_mask(img, lower, upper, around, upper_add)
