@@ -44,3 +44,21 @@ If the user chooses "continue", the system will check user inputs.
 Again, user may use polygon to accurately segment the cell,
 or use other tools and let the algorithm to refine their selection.
 The system will restart tracking from the first edited frame.
+
+## Paper reference
+
+This tool is used by [Ras-mediated homeostatic control of front-back signaling dictates cell polarity](https://pubmed.ncbi.nlm.nih.gov/37693515/). The paper reference is
+
+```bibtex
+@article {Lin2023.08.30.555648,
+  author = {Yiyan Lin and Dhiman Sankar Pal and Parijat Banerjee and Tatsat Banerjee and Guanghui Qin and Yu Deng and Jane Borleis and Pablo A. Iglesias and Peter N. Devreotes},
+  title = {Ras-mediated homeostatic control of front-back signaling dictates cell polarity},
+  elocation-id = {2023.08.30.555648},
+  year = {2023},
+  doi = {10.1101/2023.08.30.555648},
+  publisher = {Cold Spring Harbor Laboratory},
+  URL = {https://www.biorxiv.org/content/early/2023/09/01/2023.08.30.555648},
+  eprint = {https://www.biorxiv.org/content/early/2023/09/01/2023.08.30.555648.full.pdf},
+  journal = {bioRxiv}
+}
+```
