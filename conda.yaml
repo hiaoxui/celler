@@ -1,0 +1,19 @@
+name: celler
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.9
+  - openjdk=11
+  - numpy=1.26.4
+  - pyimagej
+  - pip
+  - pip:
+    - matplotlib
+    - trackpy
+    - scikit-learn
+    - scikit-image
+    - scipy
+    - pandas
+    - imageio
+    - imantics

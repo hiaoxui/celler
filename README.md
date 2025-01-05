@@ -4,6 +4,13 @@ Celler helps you to track and segment cells from movies.
 It is a semi-interactive toolkit built upon fiji imagej.
 This is an instruction about how to use it.
 
+## Setup
+
+Install with Anaconda:
+```bash
+conda env create -f conda.yaml
+```
+
 ## ROI types
 
 ROI can be categorized into 2 types. Auto ROI and manual input.
@@ -47,18 +54,18 @@ The system will restart tracking from the first edited frame.
 
 ## Paper reference
 
-This tool is used by [Ras-mediated homeostatic control of front-back signaling dictates cell polarity](https://pubmed.ncbi.nlm.nih.gov/37693515/). The paper reference is
+This tool is used by [Ras suppression potentiates rear actomyosin contractility-driven cell polarization and migration](https://www.nature.com/articles/s41556-024-01453-4), published in *Nature Cell Biology*.
+The paper reference is
 
 ```bibtex
-@article {Lin2023.08.30.555648,
-  author = {Yiyan Lin and Dhiman Sankar Pal and Parijat Banerjee and Tatsat Banerjee and Guanghui Qin and Yu Deng and Jane Borleis and Pablo A. Iglesias and Peter N. Devreotes},
-  title = {Ras-mediated homeostatic control of front-back signaling dictates cell polarity},
-  elocation-id = {2023.08.30.555648},
-  year = {2023},
-  doi = {10.1101/2023.08.30.555648},
-  publisher = {Cold Spring Harbor Laboratory},
-  URL = {https://www.biorxiv.org/content/early/2023/09/01/2023.08.30.555648},
-  eprint = {https://www.biorxiv.org/content/early/2023/09/01/2023.08.30.555648.full.pdf},
-  journal = {bioRxiv}
+@article {lin2024ras,
+  author = {Lin, Yiyan and Pal, Dhiman Sankar and Banerjee, Parijat and Banerjee, Tatsat and Qin, Guanghui and Deng, Yu and Borleis, Jane and Iglesias, Pablo A. and Devreotes, Peter N.},
+  title = {Ras suppression potentiates rear actomyosin contractility-driven cell polarization and migration},
+  year = {2024},
+  URL = {https://www.nature.com/articles/s41556-024-01453-4},
+  issue = {7},
+  volumn = {26},
+  pages = {1062--1076},
+  journal = {Nature Cell Biology}
 }
 ```
