@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import logging
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing import Queue
@@ -6,7 +7,7 @@ from skimage import filters
 
 import numpy as np
 
-from .utils import logger
+logger = logging.getLogger('cell')
 
 smooth_queue = Queue()
 n_process = 1

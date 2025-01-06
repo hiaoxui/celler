@@ -1,7 +1,8 @@
-from typing import *
+from typing import Union, List
 import zipfile
 from struct import unpack, pack
 from dataclasses import dataclass, field
+
 import numpy as np
 
 

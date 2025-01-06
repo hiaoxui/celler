@@ -1,13 +1,16 @@
 from argparse import ArgumentParser
+import logging
 
 from celler.ij_port import IJPort
-from celler.utils import logger, cfg
+from celler.utils import cfg
+
+logger = logging.getLogger('cell')
 
 
 def main():
     parser = ArgumentParser()
     parser.add_argument('action', metavar='ACTION', type=str, choices=['plot', 'segment'])
-    parser.add_argument('-i', metavar='IMAGE', type=str, required=True, help='image path (tif)')
+    parser.add_argument('image', metavar='IMAGE', type=str, help='image path (tif)')
     # Parameters
     # parser.add_argument('--gaussian-sigma', type=float, default=5.0)
     # parser.add_argument('--min-size', type=int, default=20**2)
@@ -15,11 +18,10 @@ def main():
     # parser.add_argument('--search-range', type=float, default=500.)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
-    logger.setLevel('INFO')
     cfg.debug = args.debug
     logger.setLevel('DEBUG' if args.debug else 'WARNING')
 
-    port = IJPort(args.i)
+    port = IJPort(args.image)
     if args.action == 'plot':
         port.plot()
     else:

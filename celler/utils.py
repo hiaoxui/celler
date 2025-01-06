@@ -1,15 +1,14 @@
 import logging
-from typing import *
+from typing import Optional
 from dataclasses import dataclass
 
 
-def get_logger():
+def setup_logger():
     logger_ = logging.getLogger('cell')
     fmt = logging.Formatter('{asctime} {message}', style='{')
     stm_hdl = logging.StreamHandler()
     stm_hdl.setFormatter(fmt)
     logger_.addHandler(stm_hdl)
-    return logger_
 
 
 @dataclass()
@@ -38,5 +37,5 @@ def user_cmd(prompt: str, choices: str):
     return choice
 
 
-logger = get_logger()
+setup_logger()
 cfg = Config()

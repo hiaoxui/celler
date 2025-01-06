@@ -8,8 +8,20 @@ This is an instruction about how to use it.
 
 Install with Anaconda:
 ```bash
-conda env create -f conda.yaml
+conda create -n celler python=3.11
+conda activate celler
+pip install -r requirements.txt
 ```
+
+Java and Maven should be installed separately.
+Here is a guide on Windows system.
+Installing OpenJDK 11 from [this link](https://aka.ms/download-jdk/microsoft-jdk-11.0.25-windows-x64.msi). If this link fails, try finding it from [this page](https://learn.microsoft.com/en-us/java/openjdk/download).
+
+Install Maven following this instruction (copied from [stackoverflow](https://stackoverflow.com/questions/38549614/how-to-install-maven-in-windows)):
+- Download Maven from [this link](https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.zip) (or [this page](https://maven.apache.org/download.cgi)).
+- Unzip and save it to a local path.
+- Find the path to its `bin` folder.
+- Put it to the Path environment variable (use `systempropertiesadvanced` on Run to edit it).
 
 ## ROI types
 

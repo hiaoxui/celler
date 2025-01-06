@@ -1,4 +1,4 @@
-from typing import *
+from typing import Optional, List, Tuple, Set, Union, Dict
 import time
 from datetime import datetime
 import os
@@ -10,11 +10,14 @@ import numpy as np
 import scyjava as sj
 from imantics import Mask
 from matplotlib import pyplot as plt
+import logging
 
-from .utils import logger, cfg, user_cmd
+from .utils import cfg, user_cmd
 from .blob import Region, BlobFinder
 from .predict import SimpleTrackPYPredictor, BoboPredictor
 from .smooth import smooth_img, smooth_queue, smooth_one_img
+
+logger = logging.getLogger('cell')
 
 
 def save_mask(mask):
@@ -37,7 +40,7 @@ class IJPort:
             return
         logger.info('Initializing ImageJ')
         sj.config.add_option('-Xmx8g')
-        self.ij = ij = imagej.init('2.9.0', mode='interactive')
+        self.ij = ij = imagej.init('2.16.0', mode='interactive')
         ij.ui().showUI()
         logger.info(f'ImageJ version {ij.getVersion()}')
 

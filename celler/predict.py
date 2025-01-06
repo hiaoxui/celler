@@ -1,15 +1,16 @@
-from typing import *
+from typing import Optional, List
 from collections import defaultdict
+import logging
 
 import trackpy
 import numpy as np
 import pandas as pd
-from trackpy.linking.linking import logger as trackpy_logger
 
 from .blob import Blob, Region
-from .utils import cfg, logger
+from .utils import cfg
 
-trackpy_logger.setLevel('WARNING')
+logging.getLogger('trackpy.linking.linking').setLevel('WARNING')
+logger = logging.getLogger('cell')
 
 
 class Predictor:

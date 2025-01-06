@@ -1,0 +1,10 @@
+numpy==1.26.4
+pyimagej>=1.5.0
+matplotlib
+trackpy
+scikit-learn
+scikit-image
+scipy
+pandas
+imageio
+imantics
