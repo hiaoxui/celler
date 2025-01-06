@@ -11,15 +11,10 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('action', metavar='ACTION', type=str, choices=['plot', 'segment'])
     parser.add_argument('image', metavar='IMAGE', type=str, help='image path (tif)')
-    # Parameters
-    # parser.add_argument('--gaussian-sigma', type=float, default=5.0)
-    # parser.add_argument('--min-size', type=int, default=20**2)
-    # parser.add_argument('--max-size', type=float, default=1000**2)
-    # parser.add_argument('--search-range', type=float, default=500.)
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
     cfg.debug = args.debug
-    logger.setLevel('DEBUG' if args.debug else 'WARNING')
+    logger.setLevel('DEBUG' if args.debug else 'INFO')
 
     port = IJPort(args.image)
     if args.action == 'plot':

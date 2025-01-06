@@ -16,6 +16,7 @@ from .utils import cfg, user_cmd
 from .blob import Region, BlobFinder
 from .predict import SimpleTrackPYPredictor, BoboPredictor
 from .smooth import smooth_img, smooth_queue, smooth_one_img
+from .tiff_metadata import read_tiff_metadata
 
 logger = logging.getLogger('cell')
 
@@ -40,7 +41,7 @@ class IJPort:
             return
         logger.info('Initializing ImageJ')
         sj.config.add_option('-Xmx8g')
-        self.ij = ij = imagej.init('2.16.0', mode='interactive')
+        self.ij = ij = imagej.init('sc.fiji:fiji:2.16.0', mode='interactive')
         ij.ui().showUI()
         logger.info(f'ImageJ version {ij.getVersion()}')
 
@@ -79,10 +80,10 @@ class IJPort:
         self.queue_started = False
         self.async_smooth = False
         self.past_cell_centers = dict()
-        self.global_meta = dict()
-        global_meta_path = os.path.join(self.log_folder, 'meta.json')
-        if os.path.exists(global_meta_path):
-            self.global_meta = json.load(open(global_meta_path))
+        self.global_meta = read_tiff_metadata(
+            self.image_file_path, 
+            os.path.join(self.log_folder, 'meta.json')
+        )
 
     def read_past_cells(self):
         for folder in os.listdir(self.log_folder):
