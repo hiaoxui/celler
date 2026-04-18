@@ -9,6 +9,24 @@ from imantics import Polygons, Mask
 from .utils import cfg
 
 
+def _remove_small_holes_compat(mask: np.ndarray) -> np.ndarray:
+    if cfg.max_hole is None:
+        return mask
+    # `max_size` removes holes smaller than or equal to the threshold, while the
+    # old `area_threshold` removed only strictly smaller holes.
+    max_size = max(cfg.max_hole - 1, 0)
+    return morphology.remove_small_holes(mask, max_size=max_size, connectivity=2)
+
+
+def _remove_small_objects_compat(mask: np.ndarray) -> np.ndarray:
+    if cfg.min_size is None:
+        return mask
+    # `max_size` removes objects smaller than or equal to the threshold, while
+    # the old `min_size` removed only strictly smaller objects.
+    max_size = max(cfg.min_size - 1, 0)
+    return morphology.remove_small_objects(mask, max_size=max_size, connectivity=2)
+
+
 @dataclass()
 class Region:
     label: int
@@ -34,8 +52,8 @@ class Region:
             pad_widths.append([left, right])
         self.offsets = np.array([self.offsets[axis] - pad_widths[axis][0] for axis in range(2)])
         crop = morphology.dilation(np.pad(self.crop_cell_mask, pad_widths), morphology.disk(radius))
-        crop = morphology.remove_small_holes(crop, cfg.max_hole, connectivity=2)
-        crop = morphology.remove_small_objects(crop, cfg.min_size, connectivity=2)
+        crop = _remove_small_holes_compat(crop)
+        crop = _remove_small_objects_compat(crop)
         self.crop_cell_mask = crop
 
     @staticmethod
@@ -91,10 +109,10 @@ class Region:
         cropped_img = img[self.offset_slices(0), self.offset_slices(1)]
         bright_mask = (cropped_img > threshold) & enlarged_hull_mask
         # bright_exclude_mask = bright_mask & (~self.crop_cell_mask)
-        bright_mask = morphology.remove_small_holes(bright_mask, cfg.max_hole, connectivity=2)
+        bright_mask = _remove_small_holes_compat(bright_mask)
         bright_mask = morphology.binary_closing(bright_mask, morphology.disk(1))
-        bright_mask = morphology.remove_small_holes(bright_mask, cfg.max_hole, connectivity=2)
-        bright_mask = morphology.remove_small_objects(bright_mask, cfg.min_size, connectivity=2)
+        bright_mask = _remove_small_holes_compat(bright_mask)
+        bright_mask = _remove_small_objects_compat(bright_mask)
         self.crop_cell_mask = bright_mask
 
     def calibre(self, img: np.ndarray):
@@ -155,8 +173,8 @@ class BlobFinder:
                             ar > around[axis] - cfg.search_range)
                 affinity_mask &= np.expand_dims(axis_mask, 1 - axis)
             cell_mask &= affinity_mask
-        cell_mask_remove_small = morphology.remove_small_objects(cell_mask, cfg.min_size, connectivity=2)
-        cell_mask_remove_hole = morphology.remove_small_holes(cell_mask_remove_small, cfg.max_hole, connectivity=2)
+        cell_mask_remove_small = _remove_small_objects_compat(cell_mask)
+        cell_mask_remove_hole = _remove_small_holes_compat(cell_mask_remove_small)
 
         if cfg.max_size is not None:
             label_mask_tmp = measure.label(cell_mask_remove_hole)

@@ -31,7 +31,7 @@ class SimpleTrackPYPredictor(Predictor):
         if len(fetched) == 0:
             return None
         assert len(fetched) == 1
-        cell_label = int(fetched.label)
+        cell_label = int(fetched.label.to_list()[0])
         return current_blobs[cell_label]
 
 
