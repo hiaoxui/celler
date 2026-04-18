@@ -1,9 +1,9 @@
 from typing import Optional, List, Tuple, Set, Union, Dict
 import time
 from datetime import datetime
-import os
 import re
 import json
+from pathlib import Path
 
 import imagej
 import numpy as np
@@ -23,10 +23,12 @@ logger = logging.getLogger('cell')
 
 def save_mask(mask):
     mask = mask.astype(int)
+
     def bound(idx):
-        trues = np.arange(mask.shape[1-idx])[(mask != 0).any(idx)]
+        trues = np.arange(mask.shape[1 - idx])[(mask != 0).any(idx)]
         margin = 10
-        return trues[0]-margin, trues[-1]+margin
+        return trues[0] - margin, trues[-1] + margin
+
     b1 = bound(0)
     b0 = bound(1)
     mask = mask[b0[0]:b0[1], b1[0]:b1[1]]
@@ -46,7 +48,7 @@ class IJPort:
         logger.info(f'ImageJ version {ij.getVersion()}')
 
         logger.info(f'Loading {self.image_file_path}')
-        self.dataset = dataset = ij.io().open(self.image_file_path)
+        self.dataset = dataset = ij.io().open(str(self.image_file_path))
         self.imp = imp = ij.py.to_imageplus(dataset)
         sp = sj.jimport('ij.plugin.ChannelSplitter')
         channels = sp.split(imp)
@@ -55,7 +57,7 @@ class IJPort:
             self.imp = imp = channels[0]
         imp.getProcessor().resetMinAndMax()
         self.pixels = ij.py.from_java(imp).to_numpy()
-        if not os.path.exists(self._np_data_path):
+        if not self._np_data_path.exists():
             np.save(self._np_data_path, self.pixels)
         ij.ui().show(self.imp)
         self.roi_manager = ij.RoiManager.getRoiManager()
@@ -63,13 +65,13 @@ class IJPort:
         sj.jimport('ij.plugin.filter.Analyzer').setMeasurements(2092799)
         logger.info(f'Done with loading.')
 
-    def __init__(self, image_file_path: str):
+    def __init__(self, image_file_path: str | Path):
         self.find_blobs = BlobFinder()
         # paths
-        self.log_folder = image_file_path + '_logs'
-        self._np_data_path = os.path.join(self.log_folder, 'cache', 'pixels.npy')
-        self.image_file_path = image_file_path
-        os.makedirs(os.path.join(self.log_folder, 'cache'), exist_ok=True)
+        self.image_file_path = Path(image_file_path)
+        self.log_folder = self.image_file_path.parent / f'{self.image_file_path.name}_logs'
+        self._np_data_path = self.log_folder / 'cache' / 'pixels.npy'
+        self._np_data_path.parent.mkdir(parents=True, exist_ok=True)
         # self.predictor = SimpleTrackPYPredictor(config)
         # self.predictor = BoboPredictor(config)
         self.predictor = SimpleTrackPYPredictor()
@@ -81,20 +83,21 @@ class IJPort:
         self.async_smooth = False
         self.past_cell_centers = dict()
         self.global_meta = read_tiff_metadata(
-            self.image_file_path, 
-            os.path.join(self.log_folder, 'meta.json')
+            self.image_file_path,
+            self.log_folder / 'meta.json'
         )
 
     def read_past_cells(self):
-        for folder in os.listdir(self.log_folder):
-            if not re.findall(r'^cell_\d{3}$', folder):
+        for folder in self.log_folder.iterdir():
+            if not folder.is_dir() or not re.findall(r'^cell_\d{3}$', folder.name):
                 continue
-            info_path = os.path.join(self.log_folder, folder, 'meta.json')
-            if not os.path.exists(info_path):
-                logger.warning('Meta missing for ' + folder)
+            info_path = folder / 'meta.json'
+            if not info_path.exists():
+                logger.warning('Meta missing for ' + folder.name)
                 continue
-            meta = json.load(open(info_path))
-            self.past_cell_centers[folder] = np.array([meta['x'], meta['y']])
+            with info_path.open() as fp:
+                meta = json.load(fp)
+            self.past_cell_centers[folder.name] = np.array([meta['x'], meta['y']])
 
     def start_smooth(self):
         if self.queue_started or not self.async_smooth:
@@ -116,7 +119,7 @@ class IJPort:
 
     def was_done(self, center: np.ndarray, affinity=100.):
         for cell_name, ctr in self.past_cell_centers.items():
-            if np.sqrt(np.sum((ctr - center)**2)) < affinity:
+            if np.sqrt(np.sum((ctr - center) ** 2)) < affinity:
                 logger.warning(
                     f'WARNING: The cell might have been tracked already. Folder: {cell_name}. Old center: {ctr}.'
                 )
@@ -127,7 +130,7 @@ class IJPort:
         return [self.roi_manager.getRoi(i) for i in range(self.roi_manager.getCount())]
 
     def plot(self, frame_idx=0, blob=None):
-        if os.path.exists(self._np_data_path):
+        if self._np_data_path.exists():
             self.pixels = np.load(self._np_data_path)
         else:
             self.init_ij()
@@ -143,7 +146,7 @@ class IJPort:
         for region in blob.regions.values():
             ax.text(*region.centroid, str(region.label))
         fig.tight_layout()
-        fig.savefig(os.path.join(self.log_folder, f'frame_{frame_idx}.pdf'))
+        fig.savefig(self.log_folder / f'frame_{frame_idx}.pdf')
 
     @property
     def total_frames(self) -> int:
@@ -252,7 +255,7 @@ class IJPort:
                 continue
             # delete the frames after the pointer but keep user's inputs
             self.roi_manager.runCommand('Sort')
-            self.roi_manager.select(len(self.retrieve_rois())-1)
+            self.roi_manager.select(len(self.retrieve_rois()) - 1)
         self.save(past_regions[0])
 
     def guess_threshold(
@@ -265,7 +268,7 @@ class IJPort:
             return None, None
         weights, lowers, uppers, means = list(), list(), list(), list()
         for i, pr in enumerate(past_regions[:5]):
-            weights.append(np.exp(-i/10))
+            weights.append(np.exp(-i / 10))
             lowers.append(np.min(pr.intensity))
             uppers.append(np.max(pr.intensity))
             means.append(pr.top_mean())
@@ -274,8 +277,8 @@ class IJPort:
         if strategy == 'std':
             lower = (lowers * weights).sum() / weights.sum()
             upper = (uppers * weights).sum() / weights.sum()
-            lower_std = max(np.sqrt(((lowers - lower)**2 * weights).sum() / weights.sum()), 50.)
-            upper_std = max(np.sqrt(((uppers - upper)**2 * weights).sum() / weights.sum()), 50.)
+            lower_std = max(np.sqrt(((lowers - lower) ** 2 * weights).sum() / weights.sum()), 50.)
+            upper_std = max(np.sqrt(((uppers - upper) ** 2 * weights).sum() / weights.sum()), 50.)
             lower -= lower_std
             upper += upper_std
         else:
@@ -284,16 +287,17 @@ class IJPort:
         return lower, upper
 
     def save(self, first_region):
-        cell_name = cell_folder = ''
+        cell_name = ''
+        cell_folder = self.log_folder
         for i in range(1000):
             cell_name = f'cell_{i:03}'
-            cell_folder = os.path.join(self.log_folder, cell_name)
-            if not os.path.exists(cell_folder):
+            cell_folder = self.log_folder / cell_name
+            if not cell_folder.exists():
                 break
-        os.makedirs(os.path.join(self.log_folder, cell_name), exist_ok=True)
+        cell_folder.mkdir(parents=True, exist_ok=True)
 
         self.past_cell_centers[cell_name] = first_region.centroid
-        with open(os.path.join(cell_folder, 'meta.json'), 'w') as fp:
+        with (cell_folder / 'meta.json').open('w') as fp:
             meta = {
                 'x': float(first_region.centroid[0]), 'y': float(first_region.centroid[1]),
                 'cell_name': cell_name, 'timestamp': time.time(),
@@ -303,9 +307,9 @@ class IJPort:
             json.dump(meta, fp, indent=2)
         self.roi_manager.runCommand('Sort')
         self.roi_manager.setSelectedIndexes(list(range(len(self.retrieve_rois()))))
-        self.roi_manager.save(os.path.join(cell_folder, f'RoiSet.zip'))
+        self.roi_manager.save(str(cell_folder / 'RoiSet.zip'))
         self.roi_manager.runCommand('Measure')
-        self.ij.IJ.saveAs('measurements', os.path.join(cell_folder, f'{cell_name}_measurements.csv'))
+        self.ij.IJ.saveAs('measurements', str(cell_folder / f'{cell_name}_measurements.csv'))
         self.ij.py.run_macro('run("Clear Results");', {})
 
     def segment(self):
@@ -369,7 +373,7 @@ class IJPort:
         # ov = overlay_class()
         # ov.add(roi)
         self.roi_manager.addRoi(roi)
-        self.roi_manager.select(len(self.retrieve_rois())-1)
+        self.roi_manager.select(len(self.retrieve_rois()) - 1)
         return roi.getName()
 
     def delete_roi(self, index: Union[int, List[int]]):

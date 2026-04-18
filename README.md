@@ -8,7 +8,7 @@ This is an instruction about how to use it.
 
 Install with Anaconda:
 ```bash
-conda create -n celler python=3.11
+conda create -n celler python=3.14
 conda activate celler
 pip install -r requirements.txt
 ```
@@ -18,7 +18,7 @@ Here is a guide on Windows system.
 Installing OpenJDK 11 from [this link](https://aka.ms/download-jdk/microsoft-jdk-11.0.25-windows-x64.msi). If this link fails, try finding it from [this page](https://learn.microsoft.com/en-us/java/openjdk/download).
 
 Install Maven following this instruction (copied from [stackoverflow](https://stackoverflow.com/questions/38549614/how-to-install-maven-in-windows)):
-- Download Maven from [this link](https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.zip) (or [this page](https://maven.apache.org/download.cgi)).
+- Download Maven from [this link](https://dlcdn.apache.org/maven/maven-3/3.9.15/binaries/apache-maven-3.9.15-bin.zip) (or [this page](https://maven.apache.org/download.cgi)).
 - Unzip and save it to a local path.
 - Find the path to its `bin` folder.
 - Put it to the Path environment variable (use `systempropertiesadvanced` on Run to edit it).
@@ -31,14 +31,14 @@ Manual inputs are those input by the user.
 When user inputs an ROI, they have 2 options:
 
 - Use Polygon. Then the system will trust the input, and keep it without any edits.
-- Use other tools, like oval and rectangle. 
+- Use other tools, like oval and rectangle.
 The segmentation algorithm will **refine** the user selection by finding its closest cell.
 The original input will be deleted and only the refined ROI will be kept.
 
 
 ## First step: Select a cell
 
-When user starts a new cell, before everything else happens, 
+When user starts a new cell, before everything else happens,
 they need to select a cell from the first frame to start with.
 They may use polygon to accurately segment the cell,
 or use other tools and let the algorithm to refine their selection (see previous section).
@@ -49,7 +49,7 @@ to avoid repeated trackings.
 ## Segmentation and tracking
 
 If user did not input anything, the system starts to track the cell until
-1. No cell can be found around the target cell. 
+1. No cell can be found around the target cell.
 This happens when the cell moves out of the scope.
 2. Last frame was analyzed.
 3. User interrupts the process by hitting the "Deselect" button.

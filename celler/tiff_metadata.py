@@ -1,6 +1,6 @@
-import re
 import json
-import os
+import re
+from pathlib import Path
 
 from PIL import Image
 from PIL.TiffTags import TAGS
@@ -17,30 +17,46 @@ def get_segments(nf: int):
         print('Wrong inputs. Try again.')
 
 
-def read_tiff_metadata(tiff_path: str, metadata_path: str):
-    if not os.path.exists(metadata_path):
+def read_tiff_metadata(tiff_path: str | Path, metadata_path: str | Path):
+    tiff_path = Path(tiff_path)
+    metadata_path = Path(metadata_path)
+    if not metadata_path.exists():
         with Image.open(tiff_path) as img:
-            dikt = {TAGS[key] : img.tag[key] for key in img.tag_v2}
+            dikt = {TAGS[key]: img.tag[key] for key in img.tag_v2}
             desc = dikt['ImageDescription'][0]
-            assert 'unit=micron' in desc
+            # assert 'unit=micron' in desc
             # frame interval
-            fv = float(re.findall(r'finterval=(\d+\.\d+)', desc)[0])
+            # if not exist, default to 1.0
+            try:
+                fv = float(re.findall(r'finterval=(\d+\.\d+)', desc)[0])
+            except IndexError:
+                fv = 1.0
             xr, yr = dikt['XResolution'][0], dikt['YResolution'][0]
             assert xr == yr
             # pixel interval
-            pi = xr[1]/xr[0]
+            pi = xr[1] / xr[0]
             # number of frames
-            nf = int(re.findall(r'frames=(\d+)', desc)[0])
+            # if not found in description, load tif to get the number of frames
+            try:
+                nf = int(re.findall(r'frames=(\d+)', desc)[0])
+            except IndexError:
+                nf = 0
+                while True:
+                    try:
+                        img.seek(nf)
+                        nf += 1
+                    except EOFError:
+                        break
         segments = get_segments(nf)
         meta = {
             'pixel_size': pi,
             'time_deltas': [fv] * nf,
-            'pixel_size_unit': 'µm',
+            'pixel_size_unit': '\u00b5m',
             'segments': segments,
         }
-        with open(metadata_path, 'w') as fp:
+        with metadata_path.open('w') as fp:
             json.dump(meta, fp)
         return meta
-    else:
-        with open(metadata_path, 'r') as fp:
-            return json.load(fp)
+
+    with metadata_path.open('r') as fp:
+        return json.load(fp)

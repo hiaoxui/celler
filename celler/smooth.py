@@ -1,11 +1,11 @@
-import multiprocessing as mp
 import logging
-import os
+import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing import Queue
-from skimage import filters
+from pathlib import Path
 
 import numpy as np
+from skimage import filters
 
 logger = logging.getLogger('cell')
 
@@ -14,15 +14,15 @@ n_process = 1
 worker = ProcessPoolExecutor(n_process, mp.get_context('spawn'))
 
 
-def _smooth_one_img(pixels: np.ndarray, sigma: float, log_folder: str, frame_idx: int):
+def _smooth_one_img(pixels: np.ndarray, sigma: float, log_folder: str | Path, frame_idx: int):
     smooth_queue.put((sigma, frame_idx, smooth_one_img(pixels, sigma, log_folder, frame_idx)))
 
 
-def smooth_one_img(pixels: np.ndarray, sigma: float, log_folder: str, frame_idx: int):
+def smooth_one_img(pixels: np.ndarray, sigma: float, log_folder: str | Path, frame_idx: int):
     logger.debug(f"Smoothing frame {frame_idx}...")
-    cache_path = os.path.join(log_folder, 'cache', f'smooth_{sigma}', f'{frame_idx}.npy')
-    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    if not os.path.exists(cache_path):
+    cache_path = Path(log_folder) / 'cache' / f'smooth_{sigma}' / f'{frame_idx}.npy'
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    if not cache_path.exists():
         smoothed = filters.gaussian(pixels, sigma, preserve_range=True).astype(np.uint16)
         np.save(cache_path, smoothed)
     else:
@@ -32,7 +32,7 @@ def smooth_one_img(pixels: np.ndarray, sigma: float, log_folder: str, frame_idx:
     return smoothed
 
 
-def smooth_img(all_frames: np.ndarray, sigma: float, log_folder: str):
+def smooth_img(all_frames: np.ndarray, sigma: float, log_folder: str | Path):
     logger.warning("Submitting jobs")
     for i_frame, pixels in enumerate(all_frames):
         worker.submit(_smooth_one_img, pixels.copy(), sigma, log_folder, i_frame)
