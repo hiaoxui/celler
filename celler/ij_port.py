@@ -3,7 +3,10 @@ import time
 from datetime import datetime
 import re
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 
 import imagej
 import numpy as np
@@ -19,6 +22,139 @@ from .smooth import smooth_img, smooth_queue, smooth_one_img
 from .tiff_metadata import read_tiff_metadata
 
 logger = logging.getLogger('cell')
+
+
+def _java_executable_name() -> str:
+    return 'java.exe' if os.name == 'nt' else 'java'
+
+
+def _java_major_version(java_home: Path) -> Optional[int]:
+    release_file = java_home / 'release'
+    if release_file.exists():
+        for line in release_file.read_text().splitlines():
+            if not line.startswith('JAVA_VERSION='):
+                continue
+            version = line.split('=', 1)[1].strip().strip('"')
+            major = version.split('.', 1)[0]
+            if major.isdigit():
+                return int(major)
+
+    java_bin = java_home / 'bin' / _java_executable_name()
+    if not java_bin.exists():
+        return None
+
+    try:
+        proc = subprocess.run(
+            [str(java_bin), '-version'],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+
+    output = (proc.stderr or proc.stdout).strip()
+    match = re.search(r'"(?P<major>\d+)(?:\.\d+)?', output)
+    if match is None:
+        return None
+    return int(match.group('major'))
+
+
+def _bundled_fiji_java_homes(fiji_dir: Path) -> List[Path]:
+    java_root = fiji_dir / 'java'
+    if not java_root.exists():
+        return []
+
+    java_bin_name = _java_executable_name()
+    homes = []
+    for java_bin in java_root.glob(f'**/bin/{java_bin_name}'):
+        homes.append(java_bin.parent.parent)
+    return homes
+
+
+def _system_java_home() -> Optional[Path]:
+    java_path = shutil.which('java')
+    if java_path is None:
+        return None
+    return Path(java_path).resolve().parent.parent
+
+
+def _configure_java_runtime(fiji_dir: Path) -> None:
+    min_java_version = 21
+    candidates: List[Path] = []
+
+    java_home = os.environ.get('JAVA_HOME')
+    if java_home:
+        candidates.append(Path(java_home).expanduser())
+    candidates.extend(_bundled_fiji_java_homes(fiji_dir))
+
+    system_java_home = _system_java_home()
+    if system_java_home is not None:
+        candidates.append(system_java_home)
+
+    seen: Set[Path] = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+
+        version = _java_major_version(candidate)
+        if version is None or version < min_java_version:
+            continue
+
+        os.environ['JAVA_HOME'] = str(candidate)
+        sj.config.set_java_constraints(fetch='never')
+        logger.info('Using Java %s from %s for ImageJ', version, candidate)
+        return
+
+    sj.config.set_java_constraints(fetch='always', version=str(min_java_version))
+    logger.warning(
+        'Could not find a local Java %s+ runtime for ImageJ. '
+        'Allowing scyjava to download one instead.',
+        min_java_version,
+    )
+
+
+def _patch_pyimagej_java_version_detection() -> None:
+    if getattr(imagej, '_celler_java_version_patch', False):
+        return
+
+    def _guess_java_version() -> Optional[int]:
+        try:
+            if sj.jvm_started():
+                version_digits = sj.jvm_version()
+                if version_digits:
+                    return version_digits[0]
+        except Exception:
+            pass
+
+        java_home = os.environ.get('JAVA_HOME')
+        if java_home:
+            version = _java_major_version(Path(java_home).expanduser())
+            if version is not None:
+                return version
+
+        system_java_home = _system_java_home()
+        if system_java_home is not None:
+            version = _java_major_version(system_java_home)
+            if version is not None:
+                return version
+
+        fetch_plan = sj.config.get_fetch_java()
+        if fetch_plan in {'always', 'auto'}:
+            version_to_fetch = sj.config.get_java_version()
+            if version_to_fetch:
+                major = version_to_fetch.split('.', 1)[0]
+                if major.isdigit():
+                    return int(major)
+            return 9999
+
+        logger.warning('Failed to guess the Java version.')
+        return None
+
+    imagej._guess_java_version = _guess_java_version
+    imagej._celler_java_version_patch = True
 
 
 def save_mask(mask):
@@ -42,8 +178,15 @@ class IJPort:
         if self.ij is not None:
             return
         logger.info('Initializing ImageJ')
+        fiji_dir = Path('~/local/Fiji').expanduser()
+        _configure_java_runtime(fiji_dir)
+        _patch_pyimagej_java_version_detection()
         sj.config.add_option('-Xmx8g')
-        self.ij = ij = imagej.init('sc.fiji:fiji:2.16.0', mode='interactive')
+        self.ij = ij = imagej.init(
+            # 'sc.fiji:fiji:2.16.0',
+            ij_dir_or_version_or_endpoint=str(fiji_dir),
+            mode='interactive'
+        )
         ij.ui().showUI()
         logger.info(f'ImageJ version {ij.getVersion()}')
 
